@@ -25,8 +25,59 @@ module "security_groups" {
   tags             = var.tags
 }
 
-output "vpc_id"                 { value = module.vpc.vpc_id }
-output "public_subnet_ids"      { value = module.vpc.public_subnet_ids }
-output "private_subnet_ids"     { value = module.vpc.private_subnet_ids }
-output "vpn_ssh_security_group" { value = module.security_groups.vpn_ssh_sg_id }
-output "private_instance_sg"    { value = module.security_groups.private_instance_sg }
+
+############### 
+# Vm-Asg
+###############
+
+# OpenVPN ASG (private subnets + VPN SG from modules)
+module "openvpn_asg" {
+  source = "./ec2-public"
+
+  name               = var.openvpn_name
+  ami_id             = var.openvpn_ami 
+  instance_type      = var.openvpn_instance_type
+  key_name           = var.key_name_admin
+
+  # <<< Pull from modules >>>
+  security_group_ids = [module.security_groups.vpn_ssh_sg_id]
+  subnet_ids         = module.vpc.private_subnet_ids
+
+  user_data          = var.openvpn_user_data
+
+  min_size           = var.openvpn_min
+  max_size           = var.openvpn_max
+  desired_capacity   = var.openvpn_desired
+
+  health_check_type       = "EC2"
+  health_check_grace_sec  = 180
+  target_group_arns       = var.openvpn_tg_arns
+
+  tags = var.tags
+}
+
+# Private VM ASG (private subnets + SG that allows SSH from VPN SG)
+module "private_vm_asg" {
+  source = "./ec2-private"
+
+  name               = var.private_vm_name
+  ami_id             = var.private_vm_ami
+  instance_type      = var.private_vm_instance_type
+  key_name           = var.key_name_admin
+
+  # <<< Pull from modules >>>
+  security_group_ids = [module.security_groups.private_instance_sg]
+  subnet_ids         = module.vpc.private_subnet_ids
+
+  user_data          = var.private_vm_user_data
+
+  min_size           = var.private_vm_min
+  max_size           = var.private_vm_max
+  desired_capacity   = var.private_vm_desired
+
+  health_check_type       = "EC2"
+  health_check_grace_sec  = 120
+  target_group_arns       = var.private_vm_tg_arns
+
+  tags = var.tags
+}
