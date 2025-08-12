@@ -14,3 +14,7 @@ output "target_group_arns" {
 output "listener_arns" {
   value = [for l in aws_lb_listener.listener : l.arn]
 }
+
+output "nlb_zone_id" {
+  value = aws_lb.this.zone_id
+}

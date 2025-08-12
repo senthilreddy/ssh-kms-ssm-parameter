@@ -51,10 +51,12 @@ module "openvpn_asg" {
 
   health_check_type       = "EC2"
   health_check_grace_sec  = 180
-  # Attach to BOTH OpenVPN (1194) and SSH (22) TGs on the PUBLIC NLB
+  # Attach to BOTH NLBs' TGs: 1194 and 22 on PRIMARY + SECONDARY
   target_group_arns = [
-    module.nlb_public.target_group_arns[var.openvpn_tg_key],   # e.g., "openvpn"
-    module.nlb_public.target_group_arns[var.openvpn_ssh_tg_key]# e.g., "ssh"
+    module.nlb_public.target_group_arns[var.openvpn_tg_key],
+    module.nlb_public.target_group_arns[var.openvpn_ssh_tg_key],
+    module.nlb_public_secondary.target_group_arns[var.openvpn_tg_key],
+    module.nlb_public_secondary.target_group_arns[var.openvpn_ssh_tg_key]
   ]
   tags = var.tags
 }
@@ -85,7 +87,7 @@ module "private_vm_asg" {
 }
 
 
-# --- Public NLB (OpenVPN) ---
+# --- Public NLB (PRIMARY) stays as you already have: module "nlb_public" ---
 module "nlb_public" {
   source = "./nlb"
 
@@ -98,6 +100,23 @@ module "nlb_public" {
 
   target_groups = var.nlb_public_target_groups
   listeners     = var.nlb_public_listeners
+
+  tags = var.tags
+}
+
+# --- Public NLB (SECONDARY) ---
+module "nlb_public_secondary" {
+  source = "./nlb"
+
+  name       = var.nlb_public_secondary_name
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.public_subnet_ids
+
+  enable_cross_zone_load_balancing = var.nlb_public_secondary_cross_zone
+  internal                         = false
+
+  target_groups = var.nlb_public_secondary_target_groups
+  listeners     = var.nlb_public_secondary_listeners
 
   tags = var.tags
 }
@@ -117,4 +136,20 @@ module "nlb_private" {
   listeners     = var.nlb_private_listeners
 
   tags = var.tags
+}
+
+module "route53_failover_public_vpn" {
+  source = "./route53-failover"
+
+  zone_id     = var.route53_zone_id
+  record_name = var.route53_record_name
+  record_type = "A"
+
+  primary_alias_dns_name = module.nlb_public.nlb_dns_name
+  primary_alias_zone_id  = module.nlb_public.nlb_zone_id
+
+  secondary_alias_dns_name = module.nlb_public_secondary.nlb_dns_name
+  secondary_alias_zone_id  = module.nlb_public_secondary.nlb_zone_id
+
+  evaluate_target_health = true
 }

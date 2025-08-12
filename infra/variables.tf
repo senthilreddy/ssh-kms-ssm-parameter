@@ -158,3 +158,43 @@ variable "private_vm_tg_key" {
   description = "Private NLB TG key for SSH (22)"
   type        = string
 }
+
+# SECOND public NLB (secondary) config – usually same as primary
+variable "nlb_public_secondary_name" {
+  type    = string
+  default = "openvpn-public-nlb-secondary"
+}
+variable "nlb_public_secondary_cross_zone" {
+  type    = bool
+  default = true
+}
+variable "nlb_public_secondary_target_groups" {
+  description = "Map of TGs for the secondary public NLB"
+  type = map(object({
+    port                  = number
+    protocol              = string
+    health_check_protocol = string
+    health_check_port     = string
+    target_type           = optional(string)
+  }))
+}
+variable "nlb_public_secondary_listeners" {
+  description = "Listeners for the secondary public NLB"
+  type = map(object({
+    port             = number
+    protocol         = string
+    target_group_key = string
+  }))
+}
+
+variable "route53_zone_id" {
+  description = "Hosted zone ID for the public domain"
+  type        = string
+}
+
+variable "route53_record_name" {
+  description = "Record name for OpenVPN (e.g., vpn.example.com)"
+  type        = string
+}
+
+

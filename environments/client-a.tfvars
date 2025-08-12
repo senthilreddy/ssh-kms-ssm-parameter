@@ -80,12 +80,43 @@ tags = {
 }
 
 
-# --- Public NLB (OpenVPN + SSH) ---
-nlb_public_name        = "openvpn-public-nlb"
-nlb_public_cross_zone  = true
+# -----------------------
+# PUBLIC NLB (PRIMARY)
+# -----------------------
+nlb_public_name       = "openvpn-nlb-primary"
+nlb_public_cross_zone = true
 
-# Public NLB target groups (unchanged)
 nlb_public_target_groups = {
+  openvpn = {
+    port                  = 1194
+    protocol              = "TCP_UDP"  # one TG handles both TCP+UDP
+    health_check_protocol = "TCP"
+    health_check_port     = "1194"
+    target_type           = "instance"
+  }
+  ssh = {
+    port                  = 22
+    protocol              = "TCP"
+    health_check_protocol = "TCP"
+    health_check_port     = "22"
+    target_type           = "instance"
+  }
+}
+
+# Must be a MAP (keyed) — not a list
+nlb_public_listeners = {
+  vpn_1194 = { port = 1194, protocol = "TCP_UDP", target_group_key = "openvpn" }
+  ssh_22   = { port = 22,   protocol = "TCP",     target_group_key = "ssh" }
+}
+
+# -----------------------
+# PUBLIC NLB (SECONDARY / FAILOVER)
+# -----------------------
+nlb_public_secondary_name       = "openvpn-nlb-secondary"
+nlb_public_secondary_cross_zone = true
+
+# Same shape as primary; no module references/ARNs in tfvars
+nlb_public_secondary_target_groups = {
   openvpn = {
     port                  = 1194
     protocol              = "TCP_UDP"
@@ -102,10 +133,11 @@ nlb_public_target_groups = {
   }
 }
 
-nlb_public_listeners = {
+nlb_public_secondary_listeners = {
   vpn_1194 = { port = 1194, protocol = "TCP_UDP", target_group_key = "openvpn" }
   ssh_22   = { port = 22,   protocol = "TCP",     target_group_key = "ssh" }
 }
+
 
 
 
@@ -131,3 +163,10 @@ nlb_private_listeners = {
 openvpn_tg_key     = "openvpn"   # from nlb_public_target_groups
 openvpn_ssh_tg_key = "ssh"       # from nlb_public_target_groups
 private_vm_tg_key  = "ssh"       # from nlb_private_target_groups
+
+##############################             
+# Route53 failover
+##############################
+
+route53_zone_id     = ""     # your hosted zone ID
+route53_record_name = "senthilreddy.com"    # your desired name
