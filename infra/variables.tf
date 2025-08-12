@@ -86,3 +86,75 @@ variable "tags" {
   default = {}
 }
 
+# --- Public NLB vars ---
+variable "nlb_public_name" {
+  type    = string
+  default = "public-nlb"
+}
+variable "nlb_public_cross_zone" {
+  type    = bool
+  default = true
+}
+variable "nlb_public_target_groups" {
+  description = "Map of TGs for public NLB"
+  type = map(object({
+    port                  = number
+    protocol              = string
+    health_check_protocol = string
+    health_check_port     = string
+    target_type           = optional(string)
+  }))
+}
+
+# --- Private NLB vars ---
+variable "nlb_private_name" {
+  type    = string
+  default = "private-nlb"
+}
+variable "nlb_private_cross_zone" {
+  type    = bool
+  default = true
+}
+variable "nlb_private_target_groups" {
+  description = "Map of TGs for private (internal) NLB"
+  type = map(object({
+    port                  = number
+    protocol              = string
+    health_check_protocol = string
+    health_check_port     = string
+    target_type           = optional(string)
+  }))
+}
+
+variable "nlb_public_listeners" {
+  description = "Listeners for public NLB (keyed map)"
+  type = map(object({
+    port             = number
+    protocol         = string
+    target_group_key = string
+  }))
+}
+
+variable "nlb_private_listeners" {
+  description = "Listeners for private NLB (keyed map)"
+  type = map(object({
+    port             = number
+    protocol         = string
+    target_group_key = string
+  }))
+}
+
+
+# --- Which TG keys each ASG should attach to ---
+variable "openvpn_tg_key" {
+  description = "Public NLB TG key for OpenVPN (1194)"
+  type        = string
+}
+variable "openvpn_ssh_tg_key" {
+  description = "Public NLB TG key for SSH (22)"
+  type        = string
+}
+variable "private_vm_tg_key" {
+  description = "Private NLB TG key for SSH (22)"
+  type        = string
+}

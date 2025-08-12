@@ -78,3 +78,56 @@ tags = {
   Project     = "client-a"
   Environment = "dev"
 }
+
+
+# --- Public NLB (OpenVPN + SSH) ---
+nlb_public_name        = "openvpn-public-nlb"
+nlb_public_cross_zone  = true
+
+# Public NLB target groups (unchanged)
+nlb_public_target_groups = {
+  openvpn = {
+    port                  = 1194
+    protocol              = "TCP_UDP"
+    health_check_protocol = "TCP"
+    health_check_port     = "1194"
+    target_type           = "instance"
+  }
+  ssh = {
+    port                  = 22
+    protocol              = "TCP"
+    health_check_protocol = "TCP"
+    health_check_port     = "22"
+    target_type           = "instance"
+  }
+}
+
+nlb_public_listeners = {
+  vpn_1194 = { port = 1194, protocol = "TCP_UDP", target_group_key = "openvpn" }
+  ssh_22   = { port = 22,   protocol = "TCP",     target_group_key = "ssh" }
+}
+
+
+
+# --- Private (internal) NLB (SSH only) ---
+nlb_private_name        = "private-ssh-nlb"
+nlb_private_cross_zone  = true
+
+nlb_private_target_groups = {
+  ssh = {
+    port                  = 22
+    protocol              = "TCP"
+    health_check_protocol = "TCP"
+    health_check_port     = "22"
+    target_type           = "instance"
+  }
+}
+
+nlb_private_listeners = {
+  ssh_22 = { port = 22, protocol = "TCP", target_group_key = "ssh" }
+}
+
+# --- ASG → TG key mappings ---
+openvpn_tg_key     = "openvpn"   # from nlb_public_target_groups
+openvpn_ssh_tg_key = "ssh"       # from nlb_public_target_groups
+private_vm_tg_key  = "ssh"       # from nlb_private_target_groups

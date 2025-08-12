@@ -51,8 +51,11 @@ module "openvpn_asg" {
 
   health_check_type       = "EC2"
   health_check_grace_sec  = 180
-  target_group_arns       = var.openvpn_tg_arns
-
+  # Attach to BOTH OpenVPN (1194) and SSH (22) TGs on the PUBLIC NLB
+  target_group_arns = [
+    module.nlb_public.target_group_arns[var.openvpn_tg_key],   # e.g., "openvpn"
+    module.nlb_public.target_group_arns[var.openvpn_ssh_tg_key]# e.g., "ssh"
+  ]
   tags = var.tags
 }
 
@@ -74,10 +77,44 @@ module "private_vm_asg" {
   min_size           = var.private_vm_min
   max_size           = var.private_vm_max
   desired_capacity   = var.private_vm_desired
-
+  # Attach to SSH TG on the PRIVATE (internal) NLB
+  target_group_arns       = [module.nlb_private.target_group_arns[var.private_vm_tg_key]]
   health_check_type       = "EC2"
   health_check_grace_sec  = 120
-  target_group_arns       = var.private_vm_tg_arns
+  tags = var.tags
+}
+
+
+# --- Public NLB (OpenVPN) ---
+module "nlb_public" {
+  source = "./nlb"
+
+  name       = var.nlb_public_name
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.public_subnet_ids
+
+  enable_cross_zone_load_balancing = var.nlb_public_cross_zone
+  internal                         = false
+
+  target_groups = var.nlb_public_target_groups
+  listeners     = var.nlb_public_listeners
+
+  tags = var.tags
+}
+
+# --- Private (internal) NLB (Private VMs) ---
+module "nlb_private" {
+  source = "./nlb"
+
+  name       = var.nlb_private_name
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnet_ids   # internal LB sits in private subnets
+
+  enable_cross_zone_load_balancing = var.nlb_private_cross_zone
+  internal                         = true
+
+  target_groups = var.nlb_private_target_groups
+  listeners     = var.nlb_private_listeners
 
   tags = var.tags
 }
