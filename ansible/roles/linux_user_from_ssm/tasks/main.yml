@@ -1,0 +1,247 @@
+---
+# =========================
+# Validation
+# =========================
+- name: Validate configuration
+  ansible.builtin.assert:
+    that:
+      - customer | length > 0
+      - aws_region | length > 0
+      - ssm_path_prefix | length > 0
+      - customers is defined
+      - customers[customer] is defined
+      - customers[customer].users | length > 0
+    fail_msg: "Missing/invalid vars. Set customer/aws_region/ssm_path_prefix and customers[customer].users."
+
+# =========================
+# Effective users (from vars/customers.yml)
+# =========================
+- name: Set raw effective users list
+  ansible.builtin.set_fact:
+    _effective_users_all: "{{ customers[customer].users }}"
+
+- name: Compute effective users (apply target_usernames filter if provided)
+  ansible.builtin.set_fact:
+    _effective_users: >-
+      {{
+        (_effective_users_all | selectattr('name','in', target_usernames) | list)
+        if (target_usernames | default([]) | length > 0)
+        else _effective_users_all
+      }}
+
+- name: Collect PRESENT usernames
+  ansible.builtin.set_fact:
+    _present_usernames: >-
+      {{
+        _effective_users
+        | rejectattr('state','equalto','absent')
+        | map(attribute='name') | map('trim') | unique | list
+      }}
+
+- name: Collect ABSENT usernames
+  ansible.builtin.set_fact:
+    _absent_usernames: >-
+      {{
+        _effective_users
+        | selectattr('state','defined') | selectattr('state','equalto','absent')
+        | map(attribute='name') | map('trim') | unique | list
+      }}
+
+# =========================
+# Sudo restriction inputs
+# =========================
+- name: Validate allowed sudo commands are absolute paths
+  ansible.builtin.assert:
+    that:
+      - (allowed_sudo_commands | default([])) | length > 0
+      - allowed_sudo_commands | select('match', '^/') | list | length == (allowed_sudo_commands | length)
+    fail_msg: "allowed_sudo_commands must be non-empty and contain absolute paths only."
+
+# =========================
+# Groups
+# =========================
+- name: Ensure ssh_group exists
+  ansible.builtin.group:
+    name: "{{ ssh_group_name }}"
+    state: present
+
+- name: Ensure primary groups for PRESENT users (optional)
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ _present_usernames }}"
+  when:
+    - _present_usernames | length > 0
+    - (ensure_primary_group | default(true))
+
+- name: Build effective extra groups
+  ansible.builtin.set_fact:
+    _additional_groups: "{{ ([ssh_group_name] + (extra_groups | default([]))) | unique }}"
+    _have_additional_groups: "{{ (([ssh_group_name] + (extra_groups | default([]))) | unique | length | int) > 0 }}"
+
+# =========================
+# PRESENT users
+# =========================
+- name: Ensure PRESENT users exist (enrolled in groups)
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: present
+    create_home: "{{ create_home | default(true) }}"
+    shell: "{{ user_shell | default('/bin/bash') }}"
+    group: "{{ item if (ensure_primary_group | default(true)) else omit }}"
+    groups: "{{ _have_additional_groups | ternary((_additional_groups | join(',')), omit) }}"
+    append: "{{ _have_additional_groups | ternary(true, omit) }}"
+  loop: "{{ _present_usernames }}"
+  when: _present_usernames | length > 0
+
+- name: Ensure ~/.ssh exists for PRESENT users
+  ansible.builtin.file:
+    path: "/home/{{ item }}/.ssh"
+    state: directory
+    owner: "{{ item }}"
+    group: "{{ item }}"
+    mode: "0700"
+  loop: "{{ _present_usernames }}"
+  when: _present_usernames | length > 0
+
+- name: Install authorized_keys from SSM (PUBLIC)
+  ansible.builtin.authorized_key:
+    user: "{{ item }}"
+    key: >-
+      {{
+        lookup(
+          'aws_ssm',
+          ssm_path_prefix ~ '/' ~ customer ~ '/ssh/' ~ item ~ '/public',
+          region=aws_region,
+          decrypt=True
+        ) | trim
+      }}
+    manage_dir: false
+    state: present
+    exclusive: false
+  loop: "{{ _present_usernames }}"
+  when: _present_usernames | length > 0
+
+# =========================
+# Sudo restriction (no broad sudo; only specific commands)
+# =========================
+- name: Ensure sudoers.d directory exists
+  ansible.builtin.file:
+    path: "{{ sudo_dir | default('/etc/sudoers.d') }}"
+    state: directory
+    owner: "{{ sudo_file_owner | default('root') }}"
+    group: "{{ sudo_file_group | default('root') }}"
+    mode: "0750"
+
+- name: Remove any per-user sudoers drop-ins (present + absent)
+  ansible.builtin.file:
+    path: "{{ (sudo_dir | default('/etc/sudoers.d')) ~ '/' ~ item }}"
+    state: absent
+  loop: "{{ (_present_usernames | default([])) + (_absent_usernames | default([])) }}"
+  when: (_present_usernames | length > 0) or (_absent_usernames | length > 0)
+
+- name: Install restricted sudoers for ssh_group
+  ansible.builtin.copy:
+    dest: "{{ (sudo_dir | default('/etc/sudoers.d')) ~ '/99-' ~ ssh_group_name ~ '-restricted' }}"
+    owner: "{{ sudo_file_owner | default('root') }}"
+    group: "{{ sudo_file_group | default('root') }}"
+    mode: "0440"
+    content: >-
+      %{{ ssh_group_name }} ALL=(root) {{ (sudo_passwordless_for_allowed | default(true)) | ternary('NOPASSWD: ', '') }}{{ allowed_sudo_commands | join(', ') }}
+
+# =========================
+# Optional: Restrict SSH logins to ssh_group (AllowGroups)
+# =========================
+- name: Restrict SSH logins to ssh_group (optional)
+  when: manage_sshd_allowgroups | default(false)
+  block:
+    - name: Ensure AllowGroups line
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^AllowGroups\s+'
+        line: "AllowGroups {{ ssh_group_name }}"
+        create: yes
+        backup: yes
+    - name: Reload SSHD
+      ansible.builtin.service:
+        name: "{{ sshd_service_name | default('sshd') }}"
+        state: reloaded
+      register: _sshd_reload
+      failed_when: false
+    - name: Fallback restart SSHD if reload failed
+      ansible.builtin.service:
+        name: "{{ sshd_service_name | default('sshd') }}"
+        state: restarted
+      when: _sshd_reload is failed
+
+# =========================
+# ABSENT users handling
+# =========================
+- name: Ensure ABSENT users are not in ssh_group
+  ansible.builtin.command: "gpasswd -d {{ item }} {{ ssh_group_name }}"
+  register: _gpasswd_absent
+  changed_when: _gpasswd_absent.rc == 0
+  failed_when: false
+  loop: "{{ _absent_usernames }}"
+  when:
+    - _absent_usernames | length > 0
+    - manage_absent_users | default(true)
+
+- name: Purge authorized_keys for ABSENT users (optional)
+  ansible.builtin.file:
+    path: "/home/{{ item }}/.ssh/authorized_keys"
+    state: absent
+  loop: "{{ _absent_usernames }}"
+  when:
+    - _absent_usernames | length > 0
+    - purge_authorized_keys_on_absent | default(true)
+
+# LOCK mode (keep account but disable login)
+- name: Lock ABSENT users (disable shell + lock password)
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: present
+    shell: "/sbin/nologin"
+    password_lock: true
+  loop: "{{ _absent_usernames }}"
+  when:
+    - _absent_usernames | length > 0
+    - manage_absent_users | default(true)
+    - (absent_mode | default('remove')) == 'lock'
+
+- name: Expire ABSENT users immediately (LOCK mode)
+  ansible.builtin.command: "chage -E 0 {{ item }}"
+  register: _chage_absent
+  changed_when: _chage_absent.rc == 0
+  failed_when: false
+  loop: "{{ _absent_usernames }}"
+  when:
+    - _absent_usernames | length > 0
+    - manage_absent_users | default(true)
+    - (absent_mode | default('remove')) == 'lock'
+
+# REMOVE mode (delete account + home)
+- name: Remove ABSENT users (delete home & mail spool)
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: absent
+    remove: true
+    force: true
+  loop: "{{ _absent_usernames }}"
+  when:
+    - _absent_usernames | length > 0
+    - manage_absent_users | default(true)
+    - (absent_mode | default('remove')) == 'remove'
+
+# =========================
+# Summary
+# =========================
+- name: Summary
+  ansible.builtin.debug:
+    msg:
+      - "Present users        : {{ _present_usernames }}"
+      - "Absent users         : {{ _absent_usernames }}"
+      - "Absent handling mode : {{ absent_mode | default('remove') }}"
+      - "SSH group            : {{ ssh_group_name }}"
+      - "Allowed sudo cmds    : {{ allowed_sudo_commands }}"
+

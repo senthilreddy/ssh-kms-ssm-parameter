@@ -1,0 +1,34 @@
+# Required
+customer: "customer-a"
+aws_region: "ap-south-1"
+ssm_path_prefix: "/myorg"
+
+# Filters
+target_usernames: []         # e.g., ["senthil"] to limit scope
+
+# Accounts
+user_shell: "/bin/bash"
+create_home: true
+ensure_primary_group: true
+extra_groups: []             # additional groups beyond ssh_group
+
+# SSH group & sudo restriction
+ssh_group_name: "ssh_group"
+allowed_sudo_commands:
+  - /usr/bin/systemctl restart openvpn@server
+  - /usr/bin/systemctl status openvpn@server
+
+sudo_passwordless_for_allowed: true
+sudo_dir: "/etc/sudoers.d"
+sudo_file_owner: "root"
+sudo_file_group: "root"
+
+# Optional SSHD AllowGroups enforcement
+manage_sshd_allowgroups: false
+sshd_service_name: "sshd"
+
+# Absent handling
+manage_absent_users: true
+absent_mode: "remove"        # "remove" | "lock" keeps account, sets shell=/sbin/nologin, locks password
+purge_authorized_keys_on_absent: true
+

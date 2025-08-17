@@ -1,0 +1,348 @@
+---
+# Required vars:
+# - customer                  # e.g., "customer-a"
+# - aws_region                # e.g., "ap-south-1"
+# - ssm_path_prefix           # e.g., "/myorg"
+# - keys_dir_root             # e.g., "/opt/ansible/keys" or "~/.ansible/keys"
+#
+# Optional vars:
+# - target_usernames          # list, to filter users
+# - public_keys_secure        # bool, default: false (store PUBLIC as SecureString)
+# - kms_key_id                # kms key id/arn for PRIVATE; omit to use AWS-managed key
+# - ssm_overwrite_policy      # "always" | "never" | "changed" (default: "changed")
+# - upload_private            # bool, default: true
+# - delete_local_after_upload # bool, default: true
+
+# ----------------------------------------------------
+# 1) Load & validate
+# ----------------------------------------------------
+- name: Load customers file
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/vars/customers.yml"
+
+- name: Validate customer and users exist
+  ansible.builtin.assert:
+    that:
+      - customers is defined
+      - customers[customer] is defined
+      - customers[customer].users | length > 0
+    fail_msg: "Customer '{{ customer }}' not found or has no users."
+
+# ----------------------------------------------------
+# 2) Effective users (no state override) + filter
+# ----------------------------------------------------
+- name: Set effective users (no state override)
+  ansible.builtin.set_fact:
+    effective_users_all: "{{ customers[customer].users }}"
+
+- name: Apply optional target_usernames filter
+  ansible.builtin.set_fact:
+    effective_users: >-
+      {{
+        (effective_users_all | selectattr('name','in', target_usernames) | list)
+        if (target_usernames is defined and (target_usernames|length > 0))
+        else effective_users_all
+      }}
+
+# ----------------------------------------------------
+# 3) Present / Absent  (normalize + dedupe)
+# ----------------------------------------------------
+- name: Collect PRESENT usernames
+  ansible.builtin.set_fact:
+    present_usernames: >-
+      {{
+        effective_users
+        | rejectattr('state','equalto','absent')
+        | map(attribute='name') | map('trim') | unique | list
+      }}
+
+- name: Collect ABSENT usernames
+  ansible.builtin.set_fact:
+    absent_usernames: >-
+      {{
+        effective_users
+        | selectattr('state','defined') | selectattr('state','equalto','absent')
+        | map(attribute='name') | map('trim') | unique | list
+      }}
+
+# ----------------------------------------------------
+# 4) Paths on controller (become for /opt/*)
+# ----------------------------------------------------
+- name: Compute absolute keys dir (controller)
+  delegate_to: localhost
+  become: true
+  ansible.builtin.set_fact:
+    keys_dir_abs: "{{ keys_dir_root | regex_replace('^~', lookup('env','HOME')) }}"
+
+- name: Ensure local keys dir exists (controller)
+  delegate_to: localhost
+  become: true
+  ansible.builtin.file:
+    path: "{{ keys_dir_abs }}/{{ customer }}"
+    state: directory
+    mode: '0700'
+  when: present_usernames | length > 0
+
+# ----------------------------------------------------
+# 5) Generate keys (controller) using built-in module
+# ----------------------------------------------------
+- name: Generate keypair for PRESENT users (localhost)
+  delegate_to: localhost
+  become: true
+  ansible.builtin.openssh_keypair:
+    path: "{{ keys_dir_abs }}/{{ customer }}/{{ item }}"
+    type: rsa
+    size: 4096
+    comment: "{{ item }}@{{ customer }}"
+    state: present
+    mode: '0600'
+  loop: "{{ present_usernames }}"
+  when: present_usernames | length > 0
+
+# ----------------------------------------------------
+# 6) Verify files exist (and show missing if any)
+# ----------------------------------------------------
+- name: Build expected file list
+  ansible.builtin.set_fact:
+    expected_private: "{{ present_usernames
+                          | map('regex_replace','^(.*)$', keys_dir_abs ~ '/' ~ customer ~ '/\\1') | list }}"
+    expected_public:  "{{ present_usernames
+                          | map('regex_replace','^(.*)$', keys_dir_abs ~ '/' ~ customer ~ '/\\1.pub') | list }}"
+  when: present_usernames | length > 0
+
+- name: Stat expected files (localhost)
+  delegate_to: localhost
+  become: true
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ expected_private + expected_public }}"
+  register: _key_stats
+  when: present_usernames | length > 0
+
+- name: Compute missing files (if any)
+  ansible.builtin.set_fact:
+    missing_files: "{{ (_key_stats.results | selectattr('stat.exists','equalto',false)
+                         | map(attribute='invocation.module_args.path') | list) | default([]) }}"
+  when: present_usernames | length > 0
+
+- name: Assert all key files exist
+  ansible.builtin.assert:
+    that:
+      - (missing_files | length) == 0
+    fail_msg: "Missing key files: {{ missing_files | join(', ') }}"
+  when: present_usernames | length > 0
+
+# ----------------------------------------------------
+# 7) Upload PUBLIC to SSM (module)
+# ----------------------------------------------------
+- name: Put PUBLIC key to SSM
+  delegate_to: localhost
+  community.aws.ssm_parameter:
+    name: "{{ ssm_path_prefix }}/{{ customer }}/ssh/{{ item }}/public"
+    description: "Public key for {{ item }} ({{ customer }})"
+    value: "{{ lookup('file', keys_dir_abs ~ '/' ~ customer ~ '/' ~ item ~ '.pub') }}"
+    string_type: "{{ (public_keys_secure | default(false) | bool) | ternary('SecureString','String') }}"
+    key_id: "{{ (public_keys_secure | default(false) | bool) | ternary((kms_key_id | default(omit)), omit) }}"
+    overwrite_value: "{{ ssm_overwrite_policy | default('changed') }}"
+    state: present
+    region: "{{ aws_region }}"
+  loop: "{{ present_usernames }}"
+  when: present_usernames | length > 0
+
+# ----------------------------------------------------
+# 8) Upload PRIVATE to SSM via AWS CLI (pre-delete to avoid type conflicts)
+# ----------------------------------------------------
+- name: Detect awscli on controller
+  delegate_to: localhost
+  ansible.builtin.command: aws --version
+  register: _awscli
+  changed_when: false
+  failed_when: _awscli.rc != 0
+
+- name: Pre-delete PRIVATE param (module, safe)
+  delegate_to: localhost
+  community.aws.ssm_parameter:
+    name: "{{ ssm_path_prefix }}/{{ customer }}/ssh/{{ item }}/private"
+    state: absent
+    region: "{{ aws_region }}"
+  loop: "{{ present_usernames }}"
+  when:
+    - present_usernames | length > 0
+    - upload_private | default(true) | bool
+  ignore_errors: true
+
+- name: Put PRIVATE key to SSM via CLI (SecureString, single-line)
+  delegate_to: localhost
+  vars:
+    _param_name: "{{ ssm_path_prefix }}/{{ customer }}/ssh/{{ item }}/private"
+    _key_path:   "{{ keys_dir_abs }}/{{ customer }}/{{ item }}"
+    _kms_flag:   "{{ ('--key-id ' ~ kms_key_id) if (kms_key_id is defined) else '' }}"
+  ansible.builtin.shell: >
+    VALUE="$(cat '{{ _key_path }}')" &&
+    aws ssm put-parameter
+    --name "{{ _param_name }}"
+    --type SecureString
+    {{ _kms_flag }}
+    --overwrite
+    --region "{{ aws_region }}"
+    --description "Private key for {{ item }} ({{ customer }})"
+    --value "$VALUE"
+  args:
+    executable: /bin/bash
+  register: _put_cli
+  failed_when: _put_cli.rc != 0
+  changed_when: true
+  loop: "{{ present_usernames }}"
+  when:
+    - present_usernames | length > 0
+    - upload_private | default(true) | bool
+
+# ----------------------------------------------------
+# 9) Verify PRIVATE exists (CLI)
+# ----------------------------------------------------
+- name: Build expected PRIVATE parameter list
+  ansible.builtin.set_fact:
+    expected_private_params: []
+  when: (upload_private | default(true) | bool) and (present_usernames | length > 0)
+
+- name: Append expected PRIVATE parameter names
+  ansible.builtin.set_fact:
+    expected_private_params: "{{ expected_private_params + [ ssm_path_prefix ~ '/' ~ customer ~ '/ssh/' ~ item ~ '/private' ] }}"
+  loop: "{{ present_usernames }}"
+  when: (upload_private | default(true) | bool) and (present_usernames | length > 0)
+
+- name: Verify PRIVATE params via AWS CLI
+  delegate_to: localhost
+  ansible.builtin.command:
+    cmd: >
+      aws ssm get-parameter
+      --name "{{ item }}"
+      --region "{{ aws_region }}"
+      --with-decryption
+  register: _getp
+  failed_when: false
+  changed_when: false
+  loop: "{{ expected_private_params | default([]) }}"
+  when: (upload_private | default(true) | bool) and (present_usernames | length > 0)
+
+- name: Report any missing PRIVATE params
+  ansible.builtin.set_fact:
+    missing_private_params: "{{ _getp.results | selectattr('rc','ne',0) | map(attribute='item') | list | default([]) }}"
+  when: (upload_private | default(true) | bool) and (present_usernames | length > 0)
+
+- name: Assert all PRIVATE params exist (CLI)
+  ansible.builtin.assert:
+    that:
+      - (missing_private_params | length) == 0
+    fail_msg: >
+      PRIVATE params missing in Parameter Store (region {{ aws_region }}):
+      {{ missing_private_params | join(', ') }}
+      Likely causes: region mismatch, IAM/KMS policy, or incorrect path vars (ssm_path_prefix/customer/username).
+  when: (upload_private | default(true) | bool) and (present_usernames | length > 0)
+
+# ----------------------------------------------------
+# 10) Delete LOCAL key files for PRESENT users (after upload) — FIXED
+# ----------------------------------------------------
+- name: Delete local keypairs for PRESENT users (controller)
+  delegate_to: localhost
+  become: true
+  ansible.builtin.openssh_keypair:
+    path: "{{ keys_dir_abs }}/{{ customer }}/{{ item }}"
+    state: absent
+  loop: "{{ present_usernames }}"
+  when:
+    - delete_local_after_upload | default(true) | bool
+    - present_usernames | length > 0
+
+# Optional verification of deletion
+- name: Verify keys are gone (private + public)
+  delegate_to: localhost
+  become: true
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: >-
+    {{
+      (present_usernames
+        | map('regex_replace','^(.*)$', keys_dir_abs ~ '/' ~ customer ~ '/\\1') | list)
+      +
+      (present_usernames
+        | map('regex_replace','^(.*)$', keys_dir_abs ~ '/' ~ customer ~ '/\\1.pub') | list)
+    }}
+  register: _deleted_stats
+  when:
+    - delete_local_after_upload | default(true) | bool
+    - present_usernames | length > 0
+
+- name: Assert local keys removed
+  ansible.builtin.assert:
+    that:
+      - (_deleted_stats.results | selectattr('stat.exists','equalto',true) | list | length) == 0
+    fail_msg: >-
+      Some key files still exist:
+      {{
+        _deleted_stats.results
+        | selectattr('stat.exists','equalto',true)
+        | map(attribute='invocation.module_args.path')
+        | list
+      }}
+  when:
+    - delete_local_after_upload | default(true) | bool
+    - present_usernames | length > 0
+
+# ----------------------------------------------------
+# 11) Delete SSM params for ABSENT users (public/private)
+# ----------------------------------------------------
+- name: Delete SSM parameters for ABSENT users (public)
+  delegate_to: localhost
+  community.aws.ssm_parameter:
+    name: "{{ ssm_path_prefix }}/{{ customer }}/ssh/{{ item }}/public"
+    state: absent
+    region: "{{ aws_region }}"
+  loop: "{{ absent_usernames }}"
+  when: absent_usernames | length > 0
+  ignore_errors: true
+
+- name: Delete SSM parameters for ABSENT users (private)
+  delegate_to: localhost
+  community.aws.ssm_parameter:
+    name: "{{ ssm_path_prefix }}/{{ customer }}/ssh/{{ item }}/private"
+    state: absent
+    region: "{{ aws_region }}"
+  loop: "{{ absent_usernames }}"
+  when: absent_usernames | length > 0
+  ignore_errors: true
+
+# ----------------------------------------------------
+# 12) Delete local key files for ABSENT users (controller)
+# ----------------------------------------------------
+- name: Build ABSENT key file list (private + public)
+  ansible.builtin.set_fact:
+    absent_key_files: >-
+      {{
+        (absent_usernames
+          | map('regex_replace','^(.*)$', keys_dir_abs ~ '/' ~ customer ~ '/\\1') | list)
+        +
+        (absent_usernames
+          | map('regex_replace','^(.*)$', keys_dir_abs ~ '/' ~ customer ~ '/\\1.pub') | list)
+      }}
+  when: absent_usernames | length > 0
+
+- name: Delete local key files for ABSENT users (controller)
+  delegate_to: localhost
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ absent_key_files | default([]) }}"
+  when: absent_usernames | length > 0
+
+# ----------------------------------------------------
+# 13) Summary
+# ----------------------------------------------------
+- name: Summary
+  ansible.builtin.debug:
+    msg:
+      - "Present users processed: {{ present_usernames }}"
+      - "Absent users processed : {{ absent_usernames }}"
+      - "Deleted local keys after upload: {{ delete_local_after_upload | default(true) | bool }}"
+

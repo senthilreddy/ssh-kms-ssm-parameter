@@ -1,0 +1,9 @@
+# Use SSM (no SSH)
+ansible_connection: aws_ssm
+ansible_aws_ssm_region: ap-south-1
+
+# Where keys live in Parameter Store (per-customer namespace)
+ssm_path_prefix: "/customers"
+
+# Default customer (can override per run)
+customer: "customer-a"

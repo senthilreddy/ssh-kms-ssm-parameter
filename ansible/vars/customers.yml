@@ -1,0 +1,11 @@
+---
+customers:
+  customer-a:
+    users:
+      - { name: "senthil", uid: 1201, shell: "/bin/bash", state: absent }
+      - { name: "ram",     uid: 1202, shell: "/bin/bash", state: present }
+
+  customer-b:
+    users:
+      - { name: "senthil", uid: 1201, shell: "/bin/bash", state: present }
+      - { name: "ram",     uid: 1202, shell: "/bin/bash", state: present }

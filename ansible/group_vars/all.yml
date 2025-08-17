@@ -1,0 +1,26 @@
+---
+aws_region: ap-south-1
+
+# Local path where keypairs are generated
+keys_dir_root: "{{ playbook_dir }}/../keys"
+
+# SSM parameter namespace prefix
+ssm_path_prefix: "/myorg"
+
+# Upload private key to SSM SecureString (default: false)
+upload_private: true
+
+ssm_overwrite_policy: changed
+
+# Use a CMK (customer managed key). Either full ARN or alias/…
+kms_key_id: "arn:aws:kms:ap-south-1:<account_id>:key/<kms_key>"
+
+# Control overwrites: always | changed | never
+ssm_overwrite_policy: changed
+
+# (Optional) Also encrypt PUBLIC keys (default false: leave as String)
+public_keys_secure: true
+
+
+
+

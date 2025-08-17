@@ -1,0 +1,29 @@
+---
+# Defaults for the SSM / local key management role
+
+aws_region: ap-south-1
+ssm_path_prefix: "/myorg"
+keys_dir_root: "{{ playbook_dir }}/../keys"
+
+# Optional KMS CMK (alias or ARN). Omit to use AWS-managed SSM key.
+kms_key_id: ""
+
+# Encrypt public keys too?
+public_keys_secure: true
+delete_local_after_upload: true
+
+# Upload private key as SecureString?
+upload_private: true
+
+# Overwrite policy during 'present'
+ssm_overwrite_policy: changed
+
+# Optional runtime filter to act on a subset of users by name
+target_usernames: []
+
+# Key kinds managed per user (used during deletion)
+key_kinds:
+  - public
+  - private
+
+

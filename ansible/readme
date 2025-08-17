@@ -1,0 +1,28 @@
+# Use the same Python that Ansible uses (usually /usr/bin/python3)
+python3 -m pip install --upgrade pip
+python3 -m pip install boto3 botocore
+
+##########
+
+# users_remote_ssm Role
+
+This role:
+
+- Creates Linux users with sudo (no password login).
+- Ensures passwordless sudo.
+- Creates `.ssh` directories.
+- Pulls **public SSH keys** from AWS SSM Parameter Store and installs them into `authorized_keys`.
+
+## Variables
+
+```yaml
+users:
+  - { name: "senthilr", uid: 1201, shell: "/bin/bash" }
+  - { name: "rsr",   uid: 1202, shell: "/bin/bash" }
+
+ssm_global_path_prefix: "/org/ssh"
+ansible_aws_ssm_region: "ap-south-1"
+
+
+
+ansible-playbook -i inventory/aws_ec2.yml site.yml -e "customer=customer-a"

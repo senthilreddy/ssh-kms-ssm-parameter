@@ -1,0 +1,21 @@
+---
+# Required
+customer: ""
+aws_region: ""
+ssm_path_prefix: "/myorg"
+
+
+customers: {} # From your customers.yml
+
+# Optional
+target_usernames: []              # filter: only these users (by name)
+sudo_passwordless: true           # true => NOPASSWD, false => require password
+sudo_file_owner: "root"
+sudo_file_group: "root"
+sudo_dir: "/etc/sudoers.d"        # do not change unless you know what you’re doing
+user_shell: "/bin/bash"
+create_home: true
+ensure_primary_group: true        # create a same-named primary group
+extra_groups: []                  # e.g., ["adm", "docker"]
+manage_absent_users: false        # if true, remove accounts for users whose state=absent
+purge_authorized_keys_on_absent: true

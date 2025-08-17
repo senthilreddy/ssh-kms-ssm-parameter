@@ -1,0 +1,16 @@
+plugin: amazon.aws.aws_ec2
+regions:
+  - ap-south-1
+filters:
+  instance-state-name: running
+  tag:Role: openvpn-server
+hostnames:
+  - private-ip-address
+  - ip-address
+  - dns-name
+keyed_groups:
+  - key: tags.Role
+    prefix: role
+    separator: "-"
+
+

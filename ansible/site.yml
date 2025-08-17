@@ -1,0 +1,23 @@
+---
+# Play 1: run on the controller to generate keys and push to SSM
+- name: Generate keys and push to SSM (controller)
+  hosts: role_openvpn_server
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/customers.yml
+  roles:
+    - ssh_key_push
+
+# Play 2: run on target EC2s to create users and grant sudo
+- name: Create users from SSM and grant sudo (targets)
+  hosts: role_openvpn_server
+  connection: local
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/customers.yml
+    - vars/user_mgmt.yml
+  roles:
+    - linux_user_from_ssm
+
