@@ -1,0 +1,24 @@
+- name: Install common packages
+  yum:
+    name:
+      - git
+      - curl
+    state: present
+    update_cache: yes
+
+- name: Ensure the latest version of Python is installed
+  yum:
+    name: python3
+    state: latest
+
+- name: Install pip for Python 3
+  yum:
+    name: python3-pip
+    state: present
+
+- name: Install necessary Python packages
+  pip:
+    name:
+      - boto3
+      - ansible
+    state: latest
