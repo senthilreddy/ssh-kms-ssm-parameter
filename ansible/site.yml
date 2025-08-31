@@ -21,3 +21,13 @@
   roles:
     - linux_user_from_ssm
 
+- name: OpenVPN on Fedora with Let's Encrypt
+  hosts: role-openvpn-server
+  become: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  roles:
+    - role: firewall
+    - role: letsencrypt_dns
+    - role: openvpn
+

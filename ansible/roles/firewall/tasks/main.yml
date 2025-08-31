@@ -1,0 +1,24 @@
+- name: Ensure firewalld is installed and running
+  dnf:
+    name: firewalld
+    state: present
+
+- name: Enable and start firewalld
+  service:
+    name: firewalld
+    state: started
+    enabled: true
+
+- name: Open UDP 1194 (OpenVPN)
+  firewalld:
+    port: 1194/udp
+    permanent: true
+    state: enabled
+    immediate: true
+
+- name: Open TCP 1194 (NLB health check)
+  firewalld:
+    port: 1194/tcp
+    permanent: true
+    state: enabled
+    immediate: true

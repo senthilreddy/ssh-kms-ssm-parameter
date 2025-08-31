@@ -1,0 +1,4 @@
+- name: restart openvpn (udp)
+  service:
+    name: "openvpn-server@{{ ovpn_server_name }}"
+    state: restarted

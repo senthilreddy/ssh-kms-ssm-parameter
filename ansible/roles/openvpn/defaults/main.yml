@@ -1,0 +1,22 @@
+ovpn_server_name: "server"
+ovpn_proto_main: "udp"
+ovpn_port_main: 1194
+ovpn_enable_udp: false
+ovpn_auth_mode: "mtls"
+ovpn_org_name: "SRR DevOps"
+ovpn_network: "10.8.0.0"
+ovpn_netmask: "255.255.255.0"
+ovpn_push_routes: ["redirect-gateway def1", "dhcp-option DNS 1.1.1.1", "dhcp-option DNS 1.0.0.1"]
+
+# List of client usernames to create
+ovpn_users: []
+
+# Optional: list of client usernames to revoke
+ovpn_revoke_users: []
+
+
+# SSM upload defaults (can be overridden in group_vars)
+ovpn_ssm_prefix: "/openvpn/clients"
+ovpn_ssm_kms_key_id: ""
+ovpn_ssm_tier: "Standard"
+ovpn_ssm_param_tags: {}

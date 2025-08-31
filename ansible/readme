@@ -26,3 +26,60 @@ ansible_aws_ssm_region: "ap-south-1"
 
 
 ansible-playbook -i inventory/aws_ec2.yml site.yml -e "customer=customer-a"
+
+
+-------
+
+# OpenVPN on Fedora (Ansible) — Let's Encrypt + AWS NLB + Dynamic Inventory
+
+This repo provisions **OpenVPN** on Fedora with **Let’s Encrypt** (DNS-01 via **Route53**) and supports **multiple servers behind an AWS NLB**. Inventory is **dynamic** via `amazon.aws.aws_ec2` using tag `Role = openvpn-server` in **ap-south-1**.
+
+## Key features
+- **UDP-only 1194** OpenVPN (best performance) +
+  **TCP health shim** on 1194 so NLB **TCP** health checks pass
+- **Let’s Encrypt** server cert via `certbot-dns-route53` (auto-renew + reload)
+- **Multi-user** client provisioning with inline `.ovpn` files
+- **Dynamic inventory** keyed by EC2 tags (no static hosts file)
+- **Firewalld** rules managed
+
+## Quick start
+```bash
+ansible-galaxy collection install -r requirements.yml
+
+# Run against all instances tagged Role=openvpn-server
+ansible-playbook playbooks/site.yml
+
+# Create users (set ovpn_users in group_vars/role-openvpn-server.yml)
+ansible-playbook playbooks/site.yml --tags clients -l role-openvpn-server
+
+# Revoke users (set ovpn_revoke_users)
+ansible-playbook playbooks/site.yml --tags revoke -l role-openvpn-server
+```
+### Tagging in Terraform
+Ensure instances have:
+- `Role = openvpn-server` (required)
+- `Name = vpn-a.clienta.senthilreddy.com` (nice to have)
+- Any other tags you like (`Environment`, `Project`)
+
+### NLB health check
+If your target group is `TCP_UDP:1194` with `health_check_protocol=TCP` and `health_check_port=1194`:
+- This repo installs **`nlb-hc-1194.service`** (via `ncat`) — a tiny TCP responder on port **1194** so NLB shows **healthy** while OpenVPN itself listens **UDP 1194**.
+
+### Output
+Per-user client profiles with **inline certs/keys** are rendered to `/etc/openvpn/clients/*.ovpn` on each server. A `clients.tar.gz` bundle is created for convenience.
+
+
+### Publish client profiles to AWS SSM
+Set the SSM vars (example already in `group_vars/role-openvpn-server.yml`):
+```yaml
+ovpn_ssm_prefix: "/client-a/openvpn/clients"
+ovpn_ssm_kms_key_id: "alias/ssm-sshs"    # or key id; leave empty for AWS managed
+ovpn_ssm_tier: "Standard"
+ovpn_ssm_param_tags:
+  Project: "client-a"
+  Component: "openvpn"
+```
+
+Then run the clients tag. Each `<user>.ovpn` is uploaded as a **SecureString** to
+`<prefix>/<user>.ovpn`. Requires the instance role (or controller creds) to allow
+`ssm:PutParameter` (and KMS encrypt if a CMK is used).

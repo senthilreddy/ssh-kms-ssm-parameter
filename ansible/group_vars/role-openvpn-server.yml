@@ -1,0 +1,37 @@
+# Defaults for hosts in dynamic group 'role-openvpn-server'
+# Let's Encrypt (DNS-01 via Route53)
+le_domain: "vpn.clienta.senthilreddy.com"
+le_email: "admin@senthilreddy.com"
+le_dns_provider: "route53"
+
+# UDP-only OpenVPN
+ovpn_proto_main: "udp"
+ovpn_port_main: 1194
+ovpn_enable_udp: false
+
+ovpn_auth_mode: "mtls"
+ovpn_org_name: "SRR DevOps"
+
+ovpn_push_routes:
+  - "redirect-gateway def1"
+  - "dhcp-option DNS 1.1.1.1"
+  - "dhcp-option DNS 1.0.0.1"
+
+ovpn_server_name: "server"
+ovpn_network: "10.8.0.0"
+ovpn_netmask: "255.255.255.0"
+
+# Create these clients automatically (set empty to skip)
+ovpn_users: []
+
+# Optionally revoke these users
+ovpn_revoke_users: []
+
+
+# --- SSM Parameter Store settings for distributing client profiles ---
+ovpn_ssm_prefix: "/client-a/openvpn/clients"   # final name will be <prefix>/<username>.ovpn
+ovpn_ssm_kms_key_id: ""                        # e.g., "alias/ssm-sshs" or KMS key id; empty = AWS managed key
+ovpn_ssm_tier: "Standard"                      # "Standard" or "Advanced"
+ovpn_ssm_param_tags:
+  Project: "client-a"
+  Component: "openvpn"

@@ -1,0 +1,39 @@
+- name: Install Certbot and Route53 plugin
+  dnf:
+    name:
+      - certbot
+      - python3-certbot-dns-route53
+    state: present
+
+- name: Ensure deploy hook directory exists
+  file:
+    path: /etc/letsencrypt/renewal-hooks/deploy
+    state: directory
+    mode: "0755"
+
+- name: Obtain/renew Let's Encrypt certificate via Route53 (DNS-01)
+  command: >
+    certbot certonly --dns-route53
+    -d {{ le_domain }}
+    --agree-tos -m {{ le_email }}
+    --non-interactive --preferred-challenges dns
+  args:
+    creates: "/etc/letsencrypt/live/{{ le_domain }}/fullchain.pem"
+
+- name: Install renew deploy hook to reload OpenVPN
+  copy:
+    dest: /etc/letsencrypt/renewal-hooks/deploy/reload-openvpn.sh
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      {{ le_renew_hook }}
+
+- name: Link certs to OpenVPN location (for consistent paths)
+  file:
+    src: "/etc/letsencrypt/live/{{ le_domain }}/{{ item.src }}"
+    dest: "/etc/openvpn/{{ item.dest }}"
+    state: link
+    force: true
+  loop:
+    - { src: "fullchain.pem", dest: "server-fullchain.pem" }
+    - { src: "privkey.pem",   dest: "server-privkey.pem" }

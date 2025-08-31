@@ -1,0 +1,4 @@
+le_domain: "vpn.clienta.senthilreddy.com"
+le_email: "admin@senthilreddy.com"
+le_dns_provider: "route53"
+le_renew_hook: "systemctl reload openvpn-server@{{ ovpn_server_name }} || true"

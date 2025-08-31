@@ -1,0 +1,216 @@
+- name: Install OpenVPN, EasyRSA, iptables, ncat
+  dnf:
+    name:
+      - openvpn
+      - easy-rsa
+      - iptables
+      - nmap-ncat
+    state: present
+
+- name: Enable IP forwarding
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    state: present
+    reload: true
+
+- name: Create OpenVPN server config directory
+  file:
+    path: /etc/openvpn/server
+    state: directory
+    mode: "0755"
+
+- name: Place server config (UDP/1194)
+  template:
+    src: server.conf.j2
+    dest: "/etc/openvpn/server/{{ ovpn_server_name }}.conf"
+    mode: "0644"
+  notify: restart openvpn (udp)
+
+- name: Ensure OpenVPN service is enabled
+  service:
+    name: "openvpn-server@{{ ovpn_server_name }}"
+    enabled: true
+
+# --- NLB TCP health responder on :1194 ---
+- name: Deploy systemd unit for NLB TCP health on 1194
+  copy:
+    dest: /etc/systemd/system/nlb-hc-1194.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=NLB TCP health listener on 1194 (for UDP-only OpenVPN)
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/bin/ncat -lk 1194 -c "/usr/bin/echo ok"
+      Restart=always
+      RestartSec=2
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: true
+
+- name: Enable and start NLB health listener
+  service:
+    name: nlb-hc-1194
+    state: started
+    enabled: true
+
+# --- EasyRSA for CA and clients ---
+- name: Create EasyRSA PKI directory
+  file:
+    path: /etc/openvpn/pki
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Initialize EasyRSA PKI (idempotent)
+  command: easyrsa init-pki
+  args:
+    chdir: /etc/openvpn/pki
+    creates: /etc/openvpn/pki/pki
+
+- name: Build CA if not exists
+  shell: |
+    set -e
+    if [ ! -f /etc/openvpn/pki/pki/ca.crt ]; then
+      yes | easyrsa --batch --req-cn "{{ ovpn_org_name }} CA" build-ca nopass
+      easyrsa gen-crl
+    fi
+  args:
+    chdir: /etc/openvpn/pki
+
+# --- Multi-user client provisioning ---
+- name: Ensure clients directory exists
+  file:
+    path: /etc/openvpn/clients
+    state: directory
+    mode: "0750"
+
+- name: Build client certificates for all ovpn_users
+  shell: |
+    set -e
+    CN="{{ item }}"
+    if [ ! -f "/etc/openvpn/pki/pki/issued/${CN}.crt" ]; then
+      easyrsa --batch build-client-full "${CN}" nopass
+    fi
+  args:
+    chdir: /etc/openvpn/pki
+  loop: "{{ ovpn_users }}"
+  when: ovpn_users | length > 0
+  tags: ["clients"]
+
+- name: Slurp CA for embedding
+  slurp:
+    src: /etc/openvpn/pki/pki/ca.crt
+  register: ca_slurp
+  when: ovpn_users | length > 0
+  tags: ["clients"]
+
+- name: Render client profiles with inline keys
+  block:
+    - name: Slurp client cert
+      slurp:
+        src: "/etc/openvpn/pki/pki/issued/{{ item }}.crt"
+      register: crt_slurp
+      loop: "{{ ovpn_users }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Slurp client key
+      slurp:
+        src: "/etc/openvpn/pki/pki/private/{{ item }}.key"
+      register: key_slurp
+      loop: "{{ ovpn_users }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Build map of user->contents (decoded)
+      set_fact:
+        ovpn_inline_map: >-
+          {%- set m = {} -%}
+          {%- for u in ovpn_users -%}
+          {%-   set _ = m.update({
+                 u: {
+                   'ca': (ca_slurp.content | b64decode),
+                   'crt': (crt_slurp.results[loop.index0].content | b64decode),
+                   'key': (key_slurp.results[loop.index0].content | b64decode)
+                 }
+               }) -%}
+          {%- endfor -%}
+          {{ m }}
+      when: ovpn_users | length > 0
+
+    - name: Render per-user .ovpn (inline)
+      template:
+        src: client-inline.ovpn.j2
+        dest: "/etc/openvpn/clients/{{ item }}.ovpn"
+        mode: "0600"
+      vars:
+        ca_content: "{{ ovpn_inline_map[item].ca }}"
+        cert_content: "{{ ovpn_inline_map[item].crt }}"
+        key_content: "{{ ovpn_inline_map[item].key }}"
+      loop: "{{ ovpn_users }}"
+      loop_control:
+        label: "{{ item }}"
+  when: ovpn_users | length > 0
+  tags: ["clients"]
+
+- name: Package clients to /etc/openvpn/clients/clients.tar.gz
+  archive:
+    path: "/etc/openvpn/clients/*.ovpn"
+    dest: "/etc/openvpn/clients/clients.tar.gz"
+    format: gz
+    remove: no
+  when: ovpn_users | length > 0
+  tags: ["clients"]
+
+
+- name: Slurp rendered .ovpn files
+  slurp:
+    src: "/etc/openvpn/clients/{{ item }}.ovpn"
+  register: ovpn_slurped
+  loop: "{{ ovpn_users }}"
+  when: ovpn_users | length > 0
+  tags: ["clients"]
+
+- name: Push client profiles to SSM Parameter Store
+  community.aws.aws_ssm_parameter:
+    name: "{{ ovpn_ssm_prefix }}/{{ item.user }}.ovpn"
+    description: "OpenVPN profile for {{ item.user }}"
+    type: "SecureString"
+    key_id: "{{ ovpn_ssm_kms_key_id | default(omit) if (ovpn_ssm_kms_key_id | length) > 0 else omit }}"
+    tier: "{{ ovpn_ssm_tier }}"
+    value: "{{ item.content | b64decode }}"
+    overwrite: true
+    tags: "{{ ovpn_ssm_param_tags | default({}) }}"
+    state: present
+  loop: "{{ query('zip', ovpn_users, ovpn_slurped.results | map(attribute='content') | list) | map('zip', ['user', 'content']) | list }}"
+  loop_control:
+    label: "{{ item.user }}"
+  when: ovpn_users | length > 0
+  tags: ["clients"]
+
+# --- Optional: revoke users ---
+- name: Revoke client certs for ovpn_revoke_users
+  shell: |
+    set -e
+    CN="{{ item }}"
+    if [ -f "/etc/openvpn/pki/pki/issued/${CN}.crt" ]; then
+      yes | easyrsa --batch revoke "${CN}"
+      easyrsa gen-crl
+      install -m 0644 /etc/openvpn/pki/pki/crl.pem /etc/openvpn/pki/pki/crl.pem
+    fi
+  args:
+    chdir: /etc/openvpn/pki
+  loop: "{{ ovpn_revoke_users }}"
+  when: ovpn_revoke_users | length > 0
+  notify: restart openvpn (udp)
+  tags: ["revoke"]

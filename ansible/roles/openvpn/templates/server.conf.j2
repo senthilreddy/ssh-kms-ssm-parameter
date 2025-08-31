@@ -1,0 +1,54 @@
+port {{ ovpn_port_main }}
+proto {{ ovpn_proto_main }}
+dev tun
+user nobody
+group nobody
+persist-key
+persist-tun
+
+# Server-side networking
+server {{ ovpn_network }} {{ ovpn_netmask }}
+topology subnet
+ifconfig-pool-persist ipp.txt
+
+# TLS (server cert from Let's Encrypt)
+# LE fullchain+privkey symlinked by letsencrypt_dns role.
+# For mTLS, we use EasyRSA CA
+{% if ovpn_auth_mode == 'mtls' %}
+crl-verify /etc/openvpn/pki/pki/crl.pem
+verify-client-cert require
+ca /etc/openvpn/pki/pki/ca.crt
+{% else %}
+plugin /usr/lib64/openvpn/plugins/openvpn-plugin-auth-pam.so login
+verify-client-cert none
+username-as-common-name
+{% endif %}
+cert /etc/openvpn/server-fullchain.pem
+key /etc/openvpn/server-privkey.pem
+
+# TLS/crypto
+tls-version-min 1.2
+cipher AES-256-GCM
+data-ciphers AES-256-GCM:AES-128-GCM
+ncp-ciphers AES-256-GCM:AES-128-GCM
+auth SHA256
+
+# Keepalive
+keepalive 10 60
+explicit-exit-notify 1
+
+# Compression disabled by default for security
+compress stub-v2
+push "compress stub-v2"
+
+# Client config pushes
+{% for item in ovpn_push_routes %}
+push "{{ item }}"
+{% endfor %}
+
+# Allow client-to-client traffic if desired
+client-to-client
+
+# Logging
+verb 3
+status /var/log/openvpn-{{ ovpn_server_name }}.status 10
