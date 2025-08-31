@@ -1,0 +1,15 @@
+# Let’s Encrypt for Client A
+le_domain: "vpn.clienta.senthilreddy.com"
+le_email: "admin@senthilreddy.com"
+
+# Client A users (profiles + SSM)
+ovpn_users:
+  - senthilr
+  - raja
+
+ovpn_ssm_prefix: "/client-a/openvpn/clients"
+ovpn_ssm_kms_key_id: "alias/ssm-sshs"
+ovpn_ssm_tier: "Standard"
+ovpn_ssm_param_tags:
+  Project: "client-a"
+  Component: "openvpn"
