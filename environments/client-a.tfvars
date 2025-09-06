@@ -12,7 +12,7 @@ kms_key_id           = ""   # ignored when create_kms_key=true
 
 ssm_prefix           = "/client-a/infra/ssh"
 usernames            = ["admin"]
-ec2_keypair   = ["admin"]
+ec2_keypair          = ["admin"]
 
 create_ec2_key_pairs = true
 ec2_key_name_prefix  = "client-a"
@@ -76,6 +76,120 @@ security_groups = {
   }
 }
 
+################################################
+# --- Public NLB (PRIMARY) 
+################################################
+nlb_public_name       = "openvpn-nlb-primary"
+nlb_public_cross_zone = true
+
+nlb_public_target_groups = {
+  openvpn = {
+    name                  = "client-a-openvpn"   # <= 32 chars recommended
+    port                  = 1194
+    protocol              = "TCP_UDP"
+    health_check_protocol = "TCP"
+    health_check_port     = "1194"
+    target_type           = "instance"
+  }
+  ssh = {
+    name                  = "client-a-ssh"
+    port                  = 22
+    protocol              = "TCP"
+    health_check_protocol = "TCP"
+    health_check_port     = "22"
+    target_type           = "instance"
+  }
+}
+
+nlb_public_listeners = [
+  { port = 1194, protocol = "TCP_UDP", target_group_key = "openvpn" },
+  { port = 22,   protocol = "TCP",     target_group_key = "ssh"     },
+]
+
+################################################
+# --- Public NLB (SECONDARY) for redundancy ---
+################################################
+nlb_public_secondary_name       = "openvpn-nlb-secondary"
+nlb_public_secondary_cross_zone = true
+
+# Same shape as primary; no module references/ARNs in tfvars
+nlb_public_secondary_target_groups = {
+  openvpn = {
+    name                  = "client-a2-openvpn"
+    port                  = 1194
+    protocol              = "TCP_UDP"
+    health_check_protocol = "TCP"
+    health_check_port     = "1194"
+    target_type           = "instance"
+  }
+  ssh = {
+    name                  = "client-a2-ssh"
+    port                  = 22
+    protocol              = "TCP"
+    health_check_protocol = "TCP"
+    health_check_port     = "22"
+    target_type           = "instance"
+  }
+}
+
+nlb_public_secondary_listeners = [
+  { port = 1194, protocol = "TCP_UDP", target_group_key = "openvpn" },
+  { port = 22,   protocol = "TCP",     target_group_key = "ssh"     },
+]
+
+
+################################################
+# --- Private NLB (internal)
+################################################
+
+nlb_private_name       = "private-ssh-nlb"
+nlb_private_cross_zone = true
+
+nlb_private_target_groups = {
+  ssh = {
+    port                  = 22
+    protocol              = "TCP"
+    health_check_protocol = "TCP"
+    health_check_port     = "22"
+    target_type           = "instance"
+  }
+}
+
+# Must be a LIST (not a map)
+nlb_private_listeners = [
+  { port = 22, protocol = "TCP", target_group_key = "ssh" }
+]
+
+
+# ##############################             
+# # OpenVPN ASG
+# ##############################
+
+# openvpn_name            = "openvpn"
+# openvpn_ami             = "ami-0d0ad8bb301edb745"
+# openvpn_instance_type   = "t3.micro"
+# key_name_admin = "client-admin"
+# openvpn_min             = 1
+# openvpn_max             = 1
+# openvpn_desired         = 1
+# # --- ASG → TG key mappings ---
+# openvpn_tg_key     = "openvpn"   # from nlb_public_target_groups
+# openvpn_ssh_tg_key = "ssh"       # from nlb_public_target_groups
+# private_vm_tg_key  = "ssh"       # from nlb_private_target_groups
+# openvpn_user_data = <<-EOT
+# #!/bin/bash
+# set -e
+# yum update -y
+# yum install -y nc openvpn iptables iproute
+# echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+# sysctl -p
+# # your full OpenVPN provisioning here...
+# EOT
+
+
+
+
+# ############################## old
 
 # sg_name_vpn     = "openvpn-ssh-sg"
 # sg_name_private = "private-instance-sg"
@@ -89,23 +203,13 @@ security_groups = {
 # # Ec2 Private and Public
 # ##############################
 # # Shared admin key pair name
-# key_name_admin = "client-admin"
+
 # # OpenVPN group
 # openvpn_name            = "openvpn"
-# openvpn_instance_type   = "t3.micro"
-# openvpn_min             = 1
-# openvpn_max             = 2
-# openvpn_desired         = 1
-# openvpn_ami             = "ami-0d0ad8bb301edb745"
-# openvpn_user_data = <<-EOT
-# #!/bin/bash
-# set -e
-# yum update -y
-# yum install -y nc openvpn iptables iproute
-# echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-# sysctl -p
-# # your full OpenVPN provisioning here...
-# EOT
+
+
+
+
 # openvpn_tg_arns = []  # add NLB TG ARNs if you have them
 
 # # Private VM group
@@ -123,89 +227,9 @@ security_groups = {
 # private_vm_tg_arns = []
 
 
-# # -----------------------
-# # PUBLIC NLB (PRIMARY)
-# # -----------------------
-# nlb_public_name       = "openvpn-nlb-primary"
-# nlb_public_cross_zone = true
-
-# nlb_public_target_groups = {
-#   openvpn = {
-#     port                  = 1194
-#     protocol              = "TCP_UDP"  # one TG handles both TCP+UDP
-#     health_check_protocol = "TCP"
-#     health_check_port     = "1194"
-#     target_type           = "instance"
-#   }
-#   ssh = {
-#     port                  = 22
-#     protocol              = "TCP"
-#     health_check_protocol = "TCP"
-#     health_check_port     = "22"
-#     target_type           = "instance"
-#   }
-# }
-
-# # Must be a MAP (keyed) — not a list
-# nlb_public_listeners = {
-#   vpn_1194 = { port = 1194, protocol = "TCP_UDP", target_group_key = "openvpn" }
-#   ssh_22   = { port = 22,   protocol = "TCP",     target_group_key = "ssh" }
-# }
-
-# # -----------------------
-# # PUBLIC NLB (SECONDARY / FAILOVER)
-# # -----------------------
-# nlb_public_secondary_name       = "openvpn-nlb-secondary"
-# nlb_public_secondary_cross_zone = true
-
-# # Same shape as primary; no module references/ARNs in tfvars
-# nlb_public_secondary_target_groups = {
-#   openvpn = {
-#     port                  = 1194
-#     protocol              = "TCP_UDP"
-#     health_check_protocol = "TCP"
-#     health_check_port     = "1194"
-#     target_type           = "instance"
-#   }
-#   ssh = {
-#     port                  = 22
-#     protocol              = "TCP"
-#     health_check_protocol = "TCP"
-#     health_check_port     = "22"
-#     target_type           = "instance"
-#   }
-# }
-
-# nlb_public_secondary_listeners = {
-#   vpn_1194 = { port = 1194, protocol = "TCP_UDP", target_group_key = "openvpn" }
-#   ssh_22   = { port = 22,   protocol = "TCP",     target_group_key = "ssh" }
-# }
 
 
 
-
-# # --- Private (internal) NLB (SSH only) ---
-# nlb_private_name        = "private-ssh-nlb"
-# nlb_private_cross_zone  = true
-
-# nlb_private_target_groups = {
-#   ssh = {
-#     port                  = 22
-#     protocol              = "TCP"
-#     health_check_protocol = "TCP"
-#     health_check_port     = "22"
-#     target_type           = "instance"
-#   }
-# }
-
-# nlb_private_listeners = {
-#   ssh_22 = { port = 22, protocol = "TCP", target_group_key = "ssh" }
-# }
-
-# # --- ASG → TG key mappings ---
-# openvpn_tg_key     = "openvpn"   # from nlb_public_target_groups
-# openvpn_ssh_tg_key = "ssh"       # from nlb_public_target_groups
-# private_vm_tg_key  = "ssh"       # from nlb_private_target_groups
 
 # ##############################             
 # # Route53 failover
