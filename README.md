@@ -37,7 +37,7 @@ This project demonstrates secure SSH key management using AWS KMS and SSM Parame
     terraform plan -var-file=../environments/client-a.tfvars
     terraform apply -var-file=../environments/client-a.tfvars
     ```
-## To setup base infra (VPC,Securitygroup,Route53,nlb,ec2...)
+## To setup base infra 
 4.  Deploy Infra modules with Terraform: 
     ```bash
     cd infra/
@@ -45,3 +45,34 @@ This project demonstrates secure SSH key management using AWS KMS and SSM Parame
     terraform plan -var-file=../environments/client-a.tfvars
     terraform apply -var-file=../environments/client-a.tfvars
     ```
+### To setup base infra one by one
+
+```
+# Init once
+terraform init
+
+# VPC
+terraform apply -target=module.vpc -var-file=../environments/client-a.tfvars
+
+# Security groups
+terraform apply -target=module.securitygroup -var-file=../environments/client-a.tfvars
+
+# Public NLB
+terraform apply -target=module.nlb_public -var-file=../environments/client-a.tfvars
+
+# Secondary Public NLB
+terraform apply -target=module.nlb_public_secondary -var-file=../environments/client-a.tfvars
+
+# Private NLB
+terraform apply -target=module.nlb_private -var-file=../environments/client-a.tfvars
+
+# OpenVPN ASG
+terraform apply -target=module.openvpn_asg -var-file=../environments/client-a.tfvars
+
+# Private VM ASG
+terraform apply -target=module.private_vm_asg -var-file=../environments/client-a.tfvars
+
+# Route53 failover
+terraform apply -target=module.route53_failover_public_vpn -var-file=../environments/client-a.tfvars
+```
+

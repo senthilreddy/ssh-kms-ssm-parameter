@@ -2,7 +2,6 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
-# ======== (Optional) Create a dedicated CMK + alias for SSM enc ========
 resource "aws_kms_key" "ssm_ssh" {
   count               = var.create_kms_key ? 1 : 0
   description         = "CMK for encrypting SSH keys in SSM"
@@ -34,13 +33,11 @@ locals {
   kms_key_id_effective = var.create_kms_key ? aws_kms_alias.ssm_ssh[0].name : var.kms_key_id
 }
 
-# ======== Generate SSH key for admin only ========
 resource "tls_private_key" "admin" {
   algorithm = var.algorithm
   rsa_bits  = var.algorithm == "RSA" ? var.rsa_bits : null
 }
 
-# ======== Store in SSM (SecureString for private; public configurable) ========
 resource "aws_ssm_parameter" "admin_private" {
   name        = "${local.path_prefix}/${local.admin_name}/private"
   description = "Private SSH key for ${local.admin_name}"
@@ -70,7 +67,6 @@ resource "aws_ssm_parameter" "admin_public" {
   tags        = merge(var.tags, { "name" = local.admin_name, "scope" = "ssh-public" })
 }
 
-# ======== (Optional) Register a single EC2 Key Pair for admin ========
 resource "aws_key_pair" "admin" {
   count      = var.create_ec2_key_pair ? 1 : 0
   key_name   = "${var.ec2_key_name_prefix}${local.admin_name}"

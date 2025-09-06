@@ -11,7 +11,8 @@ variable "instance_type" {
 }
 
 variable "key_name" {
-  type = string
+  type    = string
+  default = null
 }
 
 variable "security_group_ids" {
@@ -20,6 +21,11 @@ variable "security_group_ids" {
 
 variable "subnet_ids" {
   type = list(string)
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
 }
 
 variable "user_data" {
@@ -32,47 +38,34 @@ variable "user_data_base64" {
   default = ""
 }
 
-variable "min_size" {
-  type    = number
-  default = 1
+variable "max_size" {
+  type = number
 }
 
-variable "max_size" {
-  type    = number
-  default = 2
+variable "min_size" {
+  type = number
 }
 
 variable "desired_capacity" {
-  type    = number
-  default = 1
-}
-
-variable "health_check_type" {
-  type    = string
-  default = "EC2"
+  type = number
 }
 
 variable "health_check_grace_sec" {
   type    = number
-  default = 120
-}
-
-variable "termination_policies" {
-  type    = list(string)
-  default = ["OldestInstance"]
+  default = 300
 }
 
 variable "force_delete" {
   type    = bool
-  default = true
+  default = false
+}
+
+variable "termination_policies" {
+  type    = list(string)
+  default = []
 }
 
 variable "target_group_arns" {
   type    = list(string)
   default = []
-}
-
-variable "tags" {
-  type    = map(string)
-  default = {}
 }

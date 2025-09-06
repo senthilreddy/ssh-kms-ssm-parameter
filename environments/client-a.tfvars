@@ -1,14 +1,13 @@
 
 # Client A - TFVARS
 ################################################
-# SSM + KMS + ADMIN EC2 Key Pairs 
+# SSM + KMS + ADMIN EC2 Key Pairs  Inputs
 ################################################
 region               = "ap-south-1"
 
-# Let Terraform create CMK+alias (prevents alias-not-found)
 create_kms_key       = true
 kms_key_alias        = "alias/ssm-ssh"
-kms_key_id           = ""   # ignored when create_kms_key=true
+kms_key_id           = "" 
 
 ssm_prefix           = "/client-a/infra/ssh"
 usernames            = ["admin"]
@@ -31,7 +30,7 @@ tags = {
 
 
 # ##############################             
-# # VPC-Modules 
+# # VPC-Modules Inputs
 # ##############################
 vpc_name     = "client-a-vpc"
 vpc_cidr     = "10.0.0.0/16"
@@ -44,7 +43,7 @@ single_nat_gateway = true
 
 
 # ##############################             
-# # Security Group-Modules 
+# Security Group-Modules Inputs
 # ##############################
 name_prefix = "client-a-"
 security_groups = {
@@ -77,14 +76,14 @@ security_groups = {
 }
 
 ################################################
-# --- Public NLB (PRIMARY) 
+# Public NLB (PRIMARY) Inputs
 ################################################
 nlb_public_name       = "openvpn-nlb-primary"
 nlb_public_cross_zone = true
 
 nlb_public_target_groups = {
   openvpn = {
-    name                  = "client-a-openvpn"   # <= 32 chars recommended
+    name                  = "client-a-openvpn-primary" 
     port                  = 1194
     protocol              = "TCP_UDP"
     health_check_protocol = "TCP"
@@ -92,7 +91,7 @@ nlb_public_target_groups = {
     target_type           = "instance"
   }
   ssh = {
-    name                  = "client-a-ssh"
+    name                  = "client-a-ssh-primary"
     port                  = 22
     protocol              = "TCP"
     health_check_protocol = "TCP"
@@ -107,7 +106,7 @@ nlb_public_listeners = [
 ]
 
 ################################################
-# --- Public NLB (SECONDARY) for redundancy ---
+# Public NLB (SECONDARY) Inputs
 ################################################
 nlb_public_secondary_name       = "openvpn-nlb-secondary"
 nlb_public_secondary_cross_zone = true
@@ -115,7 +114,7 @@ nlb_public_secondary_cross_zone = true
 # Same shape as primary; no module references/ARNs in tfvars
 nlb_public_secondary_target_groups = {
   openvpn = {
-    name                  = "client-a2-openvpn"
+    name                  = "client-a-openvpn-secondary"
     port                  = 1194
     protocol              = "TCP_UDP"
     health_check_protocol = "TCP"
@@ -123,7 +122,7 @@ nlb_public_secondary_target_groups = {
     target_type           = "instance"
   }
   ssh = {
-    name                  = "client-a2-ssh"
+    name                  = "client-a-ssh-secondary"
     port                  = 22
     protocol              = "TCP"
     health_check_protocol = "TCP"
@@ -139,7 +138,7 @@ nlb_public_secondary_listeners = [
 
 
 ################################################
-# --- Private NLB (internal)
+# --- Private NLB (internal) Inputs
 ################################################
 
 nlb_private_name       = "private-ssh-nlb"
@@ -147,6 +146,7 @@ nlb_private_cross_zone = true
 
 nlb_private_target_groups = {
   ssh = {
+    name                  = "client-a-private-ssh"
     port                  = 22
     protocol              = "TCP"
     health_check_protocol = "TCP"
@@ -161,79 +161,72 @@ nlb_private_listeners = [
 ]
 
 
-# ##############################             
-# # OpenVPN ASG
-# ##############################
+##############################             
+# OpenVPN ASG Inputs
+##############################
 
-# openvpn_name            = "openvpn"
-# openvpn_ami             = "ami-0d0ad8bb301edb745"
-# openvpn_instance_type   = "t3.micro"
-# key_name_admin = "client-admin"
-# openvpn_min             = 1
-# openvpn_max             = 1
-# openvpn_desired         = 1
-# # --- ASG → TG key mappings ---
-# openvpn_tg_key     = "openvpn"   # from nlb_public_target_groups
-# openvpn_ssh_tg_key = "ssh"       # from nlb_public_target_groups
-# private_vm_tg_key  = "ssh"       # from nlb_private_target_groups
-# openvpn_user_data = <<-EOT
-# #!/bin/bash
-# set -e
-# yum update -y
-# yum install -y nc openvpn iptables iproute
-# echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-# sysctl -p
-# # your full OpenVPN provisioning here...
-# EOT
+openvpn_name            = "openvpn"
+openvpn_ami             = "ami-0d0ad8bb301edb745"
+openvpn_instance_type   = "t3.micro"
+key_name_admin          = "client-a-admin"
 
+openvpn_min             = 1
+openvpn_max             = 1
+openvpn_desired         = 1
 
+# --- ASG → TG key mappings ---
+openvpn_tg_key          = "openvpn"   # from nlb_public target_groups
+openvpn_ssh_tg_key      = "ssh"       # from nlb_public target_groups
 
+# Allow the world for demo; tighten in prod
+vpn_allowed_cidrs       = ["0.0.0.0/0"]
+ssh_admin_cidrs         = []          # prefer SSM; add office /32 if needed
 
-# ############################## old
+# Optional knobs
+health_check_grace_sec  = 180
+enable_capacity_rebalance = false
 
-# sg_name_vpn     = "openvpn-ssh-sg"
-# sg_name_private = "private-instance-sg"
-
-# vpn_udp_port      = 1194
-# vpn_tcp_port      = 0                   # set to 1194 if you also need TCP
-# vpn_ingress_cidrs = ["0.0.0.0/0"]       # lock down to office IPs in prod
-# ssh_ingress_cidrs = ["0.0.0.0/0"]       # lock down to your IPs
-
-# ##############################             
-# # Ec2 Private and Public
-# ##############################
-# # Shared admin key pair name
-
-# # OpenVPN group
-# openvpn_name            = "openvpn"
+openvpn_user_data = <<-EOT
+#!/bin/bash
+set -e
+yum update -y
+yum install -y nc openvpn iptables iproute
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+sysctl -p
+# your full OpenVPN provisioning here...
+EOT
 
 
+##############################             
+# Private VM ASG Inputs
+##############################
+
+private_vm_name           = "private-vm"
+private_vm_ami            = "ami-0d0ad8bb301edb745"
+private_vm_instance_type  = "t3.micro"
+
+private_vm_min            = 1
+private_vm_max            = 1
+private_vm_desired        = 1
+
+private_vm_tg_key         = "ssh"
+
+private_vm_user_data = <<-EOT
+#!/bin/bash
+set -euxo pipefail
+
+if command -v dnf >/dev/null 2>&1; then pm="dnf"; else pm="yum"; fi
+$pm -y update
+$pm -y install amazon-ssm-agent || true
+systemctl enable --now amazon-ssm-agent || true
+
+# Your app bootstrap here...
+EOT
 
 
-# openvpn_tg_arns = []  # add NLB TG ARNs if you have them
+##############################             
+# Route53 failover Inputs
+##############################
+route53_zone_id     = "Z0259799296D7PA0JE29K"   # Your hosted zone ID
+route53_record_name = "vpn.senthilreddy.com"  # Or "senthilreddy.com"
 
-# # Private VM group
-# private_vm_name            = "private-vm"
-# private_vm_instance_type   = "t3.micro"
-# private_vm_min             = 1
-# private_vm_max             = 2
-# private_vm_desired         = 1
-# private_vm_ami             = "ami-0d0ad8bb301edb745"
-# private_vm_user_data = <<-EOT
-# #!/bin/bash
-# yum update -y
-# yum install -y nc
-# EOT
-# private_vm_tg_arns = []
-
-
-
-
-
-
-# ##############################             
-# # Route53 failover
-# ##############################
-
-# route53_zone_id     = ""     # your hosted zone ID
-# route53_record_name = "senthilreddy.com"    # your desired name

@@ -13,7 +13,7 @@ resource "aws_route53_record" "primary" {
     evaluate_target_health = var.evaluate_target_health
   }
 
-  ttl = null # alias A/AAAA must not set TTL
+  allow_overwrite = var.allow_overwrite
 }
 
 # SECONDARY failover alias record
@@ -31,5 +31,5 @@ resource "aws_route53_record" "secondary" {
     evaluate_target_health = var.evaluate_target_health
   }
 
-  ttl = null
+  allow_overwrite = var.allow_overwrite
 }

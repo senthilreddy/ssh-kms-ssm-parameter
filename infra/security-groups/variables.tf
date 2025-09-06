@@ -21,14 +21,14 @@ variable "security_groups" {
     name        = optional(string)
     description = optional(string)
     rules = list(object({
-      type              = string            # ingress | egress
-      protocol          = string            # tcp | udp | icmp | -1
+      type              = string 
+      protocol          = string 
       from_port         = number
       to_port           = number
       description       = optional(string)
       cidr_blocks       = optional(list(string))
       ipv6_cidr_blocks  = optional(list(string))
-      source_sg_keys    = optional(list(string)) # references keys in this same map
+      source_sg_keys    = optional(list(string)) 
     }))
   }))
 

@@ -1,27 +1,35 @@
-# -------- Launch Template --------
 resource "aws_launch_template" "this" {
-  name_prefix              = "${var.name}-lt-"
-  image_id                 = var.ami_id
-  instance_type            = var.instance_type
-  key_name                 = try(var.key_name, null)
-  vpc_security_group_ids   = var.security_group_ids
-  update_default_version   = true
-  ebs_optimized            = try(var.ebs_optimized, null)
-  disable_api_termination  = try(var.disable_api_termination, null)
+  name_prefix             = "${var.name}-lt-"
+  image_id                = var.ami_id
+  instance_type           = var.instance_type
+  key_name                = var.key_name
+  vpc_security_group_ids  = var.security_group_ids
+  update_default_version  = true
+  ebs_optimized           = var.ebs_optimized
+  disable_api_termination = var.disable_api_termination
 
-  # User data: pass base64 if provided, else encode plaintext
-  user_data = var.user_data_base64 != "" ? var.user_data_base64 : (
-    var.user_data != "" ? base64encode(var.user_data) : null
+  user_data = (
+    length(var.user_data_base64) > 0 ? var.user_data_base64 :
+    length(var.user_data)        > 0 ? base64encode(var.user_data) :
+    null
   )
+
 
   metadata_options {
     http_endpoint               = "enabled"
-    http_tokens                 = "required"     # IMDSv2 only
+    http_tokens                 = "required"
     http_put_response_hop_limit = 2
   }
 
   monitoring {
-    enabled = try(var.detailed_monitoring, true)
+    enabled = var.detailed_monitoring
+  }
+
+  dynamic "iam_instance_profile" {
+    for_each = var.iam_instance_profile_name == null ? [] : [1]
+    content {
+      name = var.iam_instance_profile_name
+    }
   }
 
   dynamic "block_device_mappings" {
@@ -54,27 +62,24 @@ resource "aws_launch_template" "this" {
   }
 }
 
-# -------- Auto Scaling Group --------
 resource "aws_autoscaling_group" "this" {
   name                      = "${var.name}-asg"
   max_size                  = var.max_size
   min_size                  = var.min_size
   desired_capacity          = var.desired_capacity
   vpc_zone_identifier       = var.subnet_ids
-  health_check_type         = try(var.health_check_type, "ELB")   # prefer TG health
+  health_check_type         = length(var.target_group_arns) > 0 ? "ELB" : "EC2"
   health_check_grace_period = var.health_check_grace_sec
-  force_delete              = try(var.force_delete, false)
-  termination_policies      = try(var.termination_policies, null)
+  force_delete              = var.force_delete
+  termination_policies      = var.termination_policies
 
   launch_template {
     id      = aws_launch_template.this.id
     version = "$Latest"
   }
 
-  # Attach to NLB/ALB Target Groups (optional)
-  target_group_arns = try(var.target_group_arns, [])
+  target_group_arns = var.target_group_arns
 
-  # Propagate tags to instances
   dynamic "tag" {
     for_each = merge(var.tags, { Name = var.name })
     content {
@@ -84,20 +89,18 @@ resource "aws_autoscaling_group" "this" {
     }
   }
 
-  # Rolling replace on LT changes (AMI, user_data, SGs, etc.)
   instance_refresh {
     strategy = "Rolling"
     preferences {
       min_healthy_percentage = 90
-      auto_rollback          = true
+      auto_rollback          = false
     }
-    triggers = ["launch_template"]
   }
+
+  capacity_rebalance = var.enable_capacity_rebalance
 
   lifecycle {
     create_before_destroy = true
-    ignore_changes = [
-      desired_capacity,  # avoid spurious diffs during scale events
-    ]
+    ignore_changes = [desired_capacity]
   }
 }

@@ -13,7 +13,7 @@ module "vpc" {
 module "securitygroup" {
   source          = "./security-groups"
   name_prefix     = var.name_prefix
-  vpc_id          = module.vpc.vpc_id       # or var.vpc_id if tfvars-driven
+  vpc_id          = module.vpc.vpc_id
   tags            = var.tags
   security_groups = var.security_groups
 }
@@ -78,84 +78,83 @@ module "nlb_private" {
 }
 
 
-# ##############################
-# OpenVPN ASG (private subnets)
-# ##############################
+##############################
+#OpenVPN ASG (private subnets)
+##############################
 
-# module "openvpn_asg" {
-#   source = "./ec2-public"
-#   name          = var.openvpn_name
-#   ami_id        = var.openvpn_ami
-#   instance_type = var.openvpn_instance_type
-#   key_name      = var.key_name_admin
+module "openvpn_asg" {
+  source = "./ec2-public"
 
-#   # <<< Pull from modules >>>
-#   security_group_ids = [
-#     module.securitygroup.security_group_ids["vpn"]
-#   ]
-#   subnet_ids = module.vpc.private_subnet_ids
+  name           = var.openvpn_name
+  ami_id         = var.openvpn_ami
+  instance_type  = var.openvpn_instance_type
+  key_name       = var.key_name_admin
 
-#   user_data = var.openvpn_user_data
+  subnet_ids         = module.vpc.private_subnet_ids
+  security_group_ids = [module.securitygroup.security_group_ids["vpn"]]
 
-#   min_size         = var.openvpn_min
-#   max_size         = var.openvpn_max
-#   desired_capacity = var.openvpn_desired
+  user_data = var.openvpn_user_data
 
-#   health_check_type      = "ELB"   # prefer TG health over EC2 status
-#   health_check_grace_sec = 180
+  min_size         = var.openvpn_min
+  max_size         = var.openvpn_max
+  desired_capacity = var.openvpn_desired
 
-#   # Attach to BOTH NLBs' TGs: 1194 and 22 on PRIMARY + SECONDARY
-#   target_group_arns = [
-#     module.nlb_public.target_group_arns[var.openvpn_tg_key],
-#     module.nlb_public.target_group_arns[var.openvpn_ssh_tg_key],
-#     module.nlb_public_secondary.target_group_arns[var.openvpn_tg_key],
-#     module.nlb_public_secondary.target_group_arns[var.openvpn_ssh_tg_key],
-#   ]
+  health_check_grace_sec = 180
 
-#   tags = var.tags
-# }
+  target_group_arns = [
+    module.nlb_public.target_group_arns[var.openvpn_tg_key],
+    module.nlb_public.target_group_arns[var.openvpn_ssh_tg_key],
+    module.nlb_public_secondary.target_group_arns[var.openvpn_tg_key],
+    module.nlb_public_secondary.target_group_arns[var.openvpn_ssh_tg_key],
+  ]
 
+  tags = var.tags
+}
 
-# # Private VM ASG (private subnets + SG that allows SSH from VPN SG)
-# module "private_vm_asg" {
-#   source = "./ec2-private"
+#####################################
+#Private VM ASG (private subnets)
+#####################################
 
-#   name               = var.private_vm_name
-#   ami_id             = var.private_vm_ami
-#   instance_type      = var.private_vm_instance_type
-#   key_name           = var.key_name_admin
+module "private_vm_asg" {
+  source = "./ec2-private"
 
-#   # <<< Pull from modules >>>
-#   security_group_ids = [module.security_groups.private_instance_sg]
-#   subnet_ids         = module.vpc.private_subnet_ids
+  name          = var.private_vm_name
+  ami_id        = var.private_vm_ami
+  instance_type = var.private_vm_instance_type
+  key_name      = var.key_name_admin
 
-#   user_data          = var.private_vm_user_data
+  security_group_ids = [module.securitygroup.security_group_ids["private"]]
+  subnet_ids         = module.vpc.private_subnet_ids
 
-#   min_size           = var.private_vm_min
-#   max_size           = var.private_vm_max
-#   desired_capacity   = var.private_vm_desired
-#   # Attach to SSH TG on the PRIVATE (internal) NLB
-#   target_group_arns       = [module.nlb_private.target_group_arns[var.private_vm_tg_key]]
-#   health_check_type       = "EC2"
-#   health_check_grace_sec  = 120
-#   tags = var.tags
-# }
+  user_data = var.private_vm_user_data
 
+  min_size         = var.private_vm_min
+  max_size         = var.private_vm_max
+  desired_capacity = var.private_vm_desired
 
+  target_group_arns = [
+    module.nlb_private.target_group_arns[var.private_vm_tg_key]
+  ]
 
+  health_check_grace_sec = 120
+  tags = var.tags
+}
 
-# module "route53_failover_public_vpn" {
-#   source = "./route53-failover"
+##############################             
+# Route53 failover Inputs
+##############################
 
-#   zone_id     = var.route53_zone_id
-#   record_name = var.route53_record_name
-#   record_type = "A"
+module "route53_failover_public_vpn" {
+  source = "./route53-failover"
 
-#   primary_alias_dns_name = module.nlb_public.nlb_dns_name
-#   primary_alias_zone_id  = module.nlb_public.nlb_zone_id
+  zone_id     = var.route53_zone_id
+  record_name = var.route53_record_name
+  record_type = "A"
 
-#   secondary_alias_dns_name = module.nlb_public_secondary.nlb_dns_name
-#   secondary_alias_zone_id  = module.nlb_public_secondary.nlb_zone_id
+  primary_alias_dns_name   = module.nlb_public.dns_name
+  primary_alias_zone_id    = module.nlb_public.zone_id
+  secondary_alias_dns_name = module.nlb_public_secondary.dns_name
+  secondary_alias_zone_id  = module.nlb_public_secondary.zone_id
 
-#   evaluate_target_health = true
-# }
+  evaluate_target_health = true
+}

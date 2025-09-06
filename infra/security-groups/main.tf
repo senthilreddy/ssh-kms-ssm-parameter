@@ -1,8 +1,4 @@
-############################
-# Normalize inputs
-############################
 locals {
-  # SG definitions (name/desc/tags)
   sgs = {
     for key, sg in var.security_groups :
     key => {
@@ -13,7 +9,6 @@ locals {
     }
   }
 
-  # Flat list of all rules with helpful fields attached
   rules = flatten([
     for sg_key, sg in var.security_groups : [
       for idx, r in sg.rules : merge(r, {
@@ -32,9 +27,6 @@ locals {
   ])
 }
 
-############################
-# Create Security Groups
-############################
 resource "aws_security_group" "this" {
   for_each    = local.sgs
   name        = each.value.name
@@ -43,7 +35,6 @@ resource "aws_security_group" "this" {
   tags        = each.value.tags
 }
 
-# Map key -> SG ID
 locals {
   sg_id_by_key = { for k, sg in aws_security_group.this : k => sg.id }
 }
@@ -67,9 +58,6 @@ resource "aws_security_group_rule" "cidr_v4" {
   description       = each.value.description
 }
 
-############################
-# Rules: IPv6 CIDR
-############################
 resource "aws_security_group_rule" "cidr_v6" {
   for_each = {
     for r in local.rules :
@@ -86,10 +74,6 @@ resource "aws_security_group_rule" "cidr_v6" {
   description         = each.value.description
 }
 
-############################
-# Rules: SG -> SG
-############################
-# Precompute the for_each map (cannot use each.value inside the map expression)
 locals {
   sg_to_sg_flat = flatten([
     for base in local.rules : [
