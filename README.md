@@ -29,11 +29,19 @@ This project demonstrates secure SSH key management using AWS KMS and SSM Parame
     ```
 
 ## To setup ssh-key-kms 
-3. Deploy ssh-key-kms  with Terraform:
+3. Deploy ssh-key-kms with Terraform:
 
     ```bash
     cd module/
-    terraform init -var-file=../environments/client-a.tfvars
+    terraform init
+    terraform plan -var-file=../environments/client-a.tfvars
+    terraform apply -var-file=../environments/client-a.tfvars
+    ```
+## To setup base infra (VPC,Securitygroup,Route53,nlb,ec2...)
+4.  Deploy Infra modules with Terraform: 
+    ```bash
+    cd infra/
+    terraform init
     terraform plan -var-file=../environments/client-a.tfvars
     terraform apply -var-file=../environments/client-a.tfvars
     ```
