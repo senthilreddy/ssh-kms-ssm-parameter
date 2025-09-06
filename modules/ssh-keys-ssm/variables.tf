@@ -1,99 +1,68 @@
-variable "usernames" {
-  description = "Additional user key names (admin is implicit)."
-  type        = list(string)
-  default     = []
-}
-
 variable "ssm_prefix" {
-  description = "Base SSM path (with or without leading slash)."
+  description = "Base SSM prefix (keys will be stored under /<prefix>/admin/{private,public})"
   type        = string
-  validation {
-    condition     = can(regex("^[A-Za-z0-9_./-]+$", var.ssm_prefix))
-    error_message = "ssm_prefix may only contain letters, numbers, / . - _"
-  }
 }
 
 variable "create_kms_key" {
-  description = "Create a dedicated CMK and alias for SSM encryption."
+  description = "Whether to create a dedicated KMS CMK and alias for SSM encryption"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "kms_key_alias" {
-  description = "Alias to create when create_kms_key=true."
+  description = "Alias to attach to the created CMK (only used when create_kms_key=true)"
   type        = string
   default     = "alias/ssm-ssh"
 }
 
 variable "kms_key_id" {
-  description = "Existing KMS key identifier (key-id/ARN/alias). Ignored if create_kms_key=true."
+  description = "Existing KMS key ID or ARN to use when create_kms_key=false"
   type        = string
   default     = ""
 }
 
+variable "algorithm" {
+  description = "SSH key algorithm (ED25519 or RSA)"
+  type        = string
+  default     = "ED25519"
+  validation {
+    condition     = contains(["ED25519", "RSA"], var.algorithm)
+    error_message = "algorithm must be ED25519 or RSA"
+  }
+}
+
+variable "rsa_bits" {
+  description = "RSA bit size (used only when algorithm == RSA)"
+  type        = number
+  default     = 4096
+}
+
 variable "public_as_secure" {
-  description = "Store public keys as SecureString (encrypted)."
+  description = "Store the public key as SecureString (encrypted) instead of String"
   type        = bool
   default     = true
 }
 
 variable "ssm_tier" {
-  description = "SSM parameter tier: Standard, Advanced, or Intelligent-Tiering."
+  description = "SSM Parameter tier (Standard, Advanced, Intelligent-Tiering)"
   type        = string
   default     = "Standard"
 }
 
-variable "create_ec2_key_pairs" {
-  description = "Also create EC2 KeyPair objects from the generated public keys."
+variable "create_ec2_key_pair" {
+  description = "Whether to create an EC2 key pair named <ec2_key_name_prefix>admin"
   type        = bool
   default     = true
 }
 
 variable "ec2_key_name_prefix" {
-  description = "Prefix for EC2 key pair names."
+  description = "Prefix for the EC2 key pair name"
   type        = string
-  default     = "kp-"
-}
-
-variable "algorithm" {
-  description = "Key algorithm: ED25519 or RSA."
-  type        = string
-  default     = "ED25519"
-  validation {
-    condition     = contains(["ED25519", "RSA"], var.algorithm)
-    error_message = "algorithm must be ED25519 or RSA."
-  }
-}
-
-variable "rsa_bits" {
-  description = "RSA key size, used only when algorithm == RSA."
-  type        = number
-  default     = 4096
+  default     = "admin-"
 }
 
 variable "tags" {
-  description = "Common tags to apply."
+  description = "Common tags to apply"
   type        = map(string)
   default     = {}
 }
-
-variable "ec2_keypair" {
-  description = "Actors to register as EC2 key pairs. Must be a subset of ['admin'] + usernames."
-  type        = list(string)
-  default     = ["admin"]  # only admin by default
-}
-
-# Who can administer the key (rotate, delete, manage policy)
-variable "kms_admin_arns" {
-  description = "IAM ARNs that administer the CMK."
-  type        = list(string)
-  default     = []
-}
-
-# Who can use the key to encrypt/decrypt parameters
-variable "kms_user_arns" {
-  description = "IAM ARNs (roles/users) allowed to Encrypt/Decrypt with the CMK."
-  type        = list(string)
-  default     = []
-}
-
