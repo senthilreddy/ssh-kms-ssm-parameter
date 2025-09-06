@@ -11,6 +11,14 @@ output "sg_ids" {
   value = module.securitygroup.security_group_ids
 }
 
+# Root outputs.tf
+# Drop the old one using aws_security_group.this[...] (that resource is in the SG module)
+output "vpn_sg_id" {
+  value       = try(module.securitygroup.security_group_ids["vpn"], null)
+  description = "ID of the VPN SG from the security group module"
+}
+
+
 # output "vpn_ssh_security_group" { value = module.security_groups.vpn_ssh_sg_id }
 # output "private_instance_sg"    { value = module.security_groups.private_instance_sg }
 # output "openvpn_asg_name"       { value = module.openvpn_asg.asg_name }

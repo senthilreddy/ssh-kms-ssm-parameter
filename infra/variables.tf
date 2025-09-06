@@ -59,6 +59,125 @@ variable "name_prefix" {
 }
 
 
+###################################
+# Public NLB inputs
+###################################
+
+# NLB inputs for PRIMARY
+variable "nlb_public_name" {
+  type = string
+}
+variable "nlb_public_cross_zone" {
+  type    = bool
+  default = true
+}
+variable "nlb_public_target_groups" {
+  type = map(object({
+    name        = string
+    port        = number
+    protocol    = string               # "TCP" | "UDP" | "TLS" | "TCP_UDP"
+    target_type = optional(string, "instance")
+    health_check = optional(object({
+      protocol            = string     # e.g., "TCP" or "HTTP"
+      port                = string     # e.g., "traffic-port" or "22"
+      path                = optional(string)
+      healthy_threshold   = optional(number, 3)
+      unhealthy_threshold = optional(number, 3)
+      interval            = optional(number, 30)
+      timeout             = optional(number, 5)
+    }), null)
+  }))
+}
+variable "nlb_public_listeners" {
+  type = list(object({
+    port             = number
+    protocol         = string
+    target_group_key = string          # must match a key in nlb_public_target_groups
+  }))
+}
+
+###################################
+# Public NLB inputs SECONDARY
+###################################
+
+variable "nlb_public_secondary_name" {
+  type = string
+}
+variable "nlb_public_secondary_cross_zone" {
+  type    = bool
+  default = true
+}
+variable "nlb_public_secondary_target_groups" {
+  type = map(object({
+    name        = string
+    port        = number
+    protocol    = string
+    target_type = optional(string, "instance")
+    health_check = optional(object({
+      protocol            = string
+      port                = string
+      path                = optional(string)
+      healthy_threshold   = optional(number, 3)
+      unhealthy_threshold = optional(number, 3)
+      interval            = optional(number, 30)
+      timeout             = optional(number, 5)
+    }), null)
+  }))
+}
+variable "nlb_public_secondary_listeners" {
+  type = list(object({
+    port             = number
+    protocol         = string
+    target_group_key = string
+  }))
+}
+
+
+################################################
+# Private NLB inputs
+################################################
+
+variable "nlb_private_name" {
+  type = string
+}
+
+variable "nlb_private_cross_zone" {
+  type    = bool
+  default = true
+}
+
+variable "nlb_private_target_groups" {
+  type = map(object({
+    name                  = optional(string)
+    port                  = number
+    protocol              = string
+    target_type           = optional(string, "instance")
+    health_check_protocol = optional(string)
+    health_check_port     = optional(string)
+
+    # nested health_check object also supported
+    health_check = optional(object({
+      protocol            = string
+      port                = string
+      path                = optional(string)
+      healthy_threshold   = optional(number, 3)
+      unhealthy_threshold = optional(number, 3)
+      interval            = optional(number, 30)
+      timeout             = optional(number, 5)
+    }), null)
+  }))
+}
+
+variable "nlb_private_listeners" {
+  type = list(object({
+    port             = number
+    protocol         = string
+    target_group_key = string
+  }))
+}
+
+
+
 # ###################################
 
 # # SG inputs

@@ -11,7 +11,8 @@ variable "instance_type" {
 }
 
 variable "key_name" {
-  type = string
+  type    = string
+  default = null
 }
 
 variable "security_group_ids" {
@@ -22,6 +23,7 @@ variable "subnet_ids" {
   type = list(string)
 }
 
+# User data: provide either plaintext or base64 (module will encode plaintext)
 variable "user_data" {
   type    = string
   default = ""
@@ -32,39 +34,38 @@ variable "user_data_base64" {
   default = ""
 }
 
+# Scaling
 variable "min_size" {
-  type    = number
-  default = 1
+  type = number
 }
 
 variable "max_size" {
-  type    = number
-  default = 2
+  type = number
 }
 
 variable "desired_capacity" {
-  type    = number
-  default = 1
+  type = number
 }
 
+# Health / LB
 variable "health_check_type" {
   type    = string
-  default = "EC2" # or "ELB"
+  default = "ELB" # "ELB" or "EC2"
 }
 
 variable "health_check_grace_sec" {
   type    = number
-  default = 120
-}
-
-variable "termination_policies" {
-  type    = list(string)
-  default = ["OldestInstance"]
+  default = 180
 }
 
 variable "force_delete" {
   type    = bool
-  default = true
+  default = false
+}
+
+variable "termination_policies" {
+  type    = list(string)
+  default = null
 }
 
 variable "target_group_arns" {
@@ -72,7 +73,48 @@ variable "target_group_arns" {
   default = []
 }
 
+variable "capacity_rebalance" {
+  type    = bool
+  default = true
+}
+
+# Extras
 variable "tags" {
   type    = map(string)
   default = {}
+}
+
+variable "detailed_monitoring" {
+  type    = bool
+  default = true
+}
+
+variable "ebs_optimized" {
+  type    = bool
+  default = null
+}
+
+variable "disable_api_termination" {
+  type    = bool
+  default = null
+}
+
+variable "block_device_mappings" {
+  type = list(object({
+    device_name           = string
+    volume_size           = number
+    volume_type           = optional(string)
+    encrypted             = optional(bool)
+    delete_on_termination = optional(bool)
+    iops                  = optional(number)
+    throughput            = optional(number)
+  }))
+  default = [
+    {
+      device_name = "/dev/xvda"
+      volume_size = 20
+      volume_type = "gp3"
+      encrypted   = true
+    }
+  ]
 }

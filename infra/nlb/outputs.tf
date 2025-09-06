@@ -1,20 +1,20 @@
-output "nlb_arn" {
-  value = aws_lb.this.arn
+output "arn" {
+  value       = aws_lb.this.arn
+  description = "ARN of the NLB"
 }
 
-output "nlb_dns_name" {
-  value = aws_lb.this.dns_name
+output "dns_name" {
+  value       = aws_lb.this.dns_name
+  description = "DNS name of the NLB"
 }
 
+output "zone_id" {
+  value       = aws_lb.this.zone_id
+  description = "Hosted zone ID of the NLB"
+}
+
+# Map: target group key -> TG ARN (matches aws_lb_target_group.tg in main.tf)
 output "target_group_arns" {
-  description = "Map of target group key => ARN"
-  value = { for k, tg in aws_lb_target_group.tg : k => tg.arn }
-}
-
-output "listener_arns" {
-  value = [for l in aws_lb_listener.listener : l.arn]
-}
-
-output "nlb_zone_id" {
-  value = aws_lb.this.zone_id
+  value       = { for k, tg in aws_lb_target_group.tg : k => tg.arn }
+  description = "Map of target group keys to ARNs"
 }

@@ -4,9 +4,7 @@ resource "aws_lb" "this" {
   load_balancer_type               = "network"
   subnets                          = var.subnet_ids
   enable_cross_zone_load_balancing = var.enable_cross_zone_load_balancing
-  idle_timeout                     = null  # NLB ignores this, but aws provider requires null not 0
   internal                         = var.internal
-
   tags = merge(var.tags, { Name = var.name })
 }
 
@@ -14,24 +12,30 @@ resource "aws_lb" "this" {
 resource "aws_lb_target_group" "tg" {
   for_each = var.target_groups
 
-  name        = "${var.name}-${each.key}"
+  # Keep TG name <= 32 chars total
+  name        = try(each.value.name, "${var.name}-${each.key}")
   port        = each.value.port
-  protocol    = each.value.protocol              # "TCP" | "UDP" | "TCP_UDP" | "TLS"
+  protocol    = each.value.protocol
   vpc_id      = var.vpc_id
-  target_type = lookup(each.value, "target_type", "instance")
+  target_type = try(each.value.target_type, "instance")
 
-  # Health checks (NLB supports TCP/HTTP/HTTPS/TLS; use TCP for UDP workloads)
+  # Normalize health-check: prefer nested, then flat; default sensible TCP
   health_check {
-    protocol = each.value.health_check_protocol  # e.g., "TCP"
-    port     = each.value.health_check_port      # e.g., "traffic-port" or "22" or "1194"
+    protocol            = try(each.value.health_check.protocol, each.value.health_check_protocol, "TCP")
+    port                = try(each.value.health_check.port,     each.value.health_check_port,     "traffic-port")
+    path                = try(each.value.health_check.path, null)
+    healthy_threshold   = try(each.value.health_check.healthy_threshold,   3)
+    unhealthy_threshold = try(each.value.health_check.unhealthy_threshold, 3)
+    interval            = try(each.value.health_check.interval,            30)
+    timeout             = try(each.value.health_check.timeout,             5)
   }
 
-  tags = merge(var.tags, { Name = "${var.name}-${each.key}" })
+  tags = merge(var.tags, { Name = try(each.value.name, "${var.name}-${each.key}") })
 }
 
-# ---- Listeners (list) ----
+# ---- Listeners (list -> map for for_each) ----
 resource "aws_lb_listener" "listener" {
-  for_each = var.listeners
+  for_each = { for l in var.listeners : "${l.protocol}-${l.port}" => l }
 
   load_balancer_arn = aws_lb.this.arn
   port              = each.value.port
@@ -42,4 +46,6 @@ resource "aws_lb_listener" "listener" {
     target_group_arn = aws_lb_target_group.tg[each.value.target_group_key].arn
   }
 }
+
+
 
