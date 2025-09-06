@@ -46,6 +46,36 @@ single_nat_gateway = true
 # ##############################             
 # # Security Group-Modules 
 # ##############################
+name_prefix = "client-a-"
+security_groups = {
+  vpn = {
+    name        = "openvpn-ssh-sg"
+    description = "Allow OpenVPN and optional SSH"
+    rules = [
+      { type="ingress", protocol="udp", from_port=1194, to_port=1194,
+        cidr_blocks=["0.0.0.0/0"], description="OpenVPN UDP" },
+
+      { type="ingress", protocol="tcp", from_port=22, to_port=22,
+        cidr_blocks=["0.0.0.0/0"], description="SSH to VPN" },
+
+      { type="egress", protocol="-1", from_port=0, to_port=0,
+        cidr_blocks=["0.0.0.0/0"], ipv6_cidr_blocks=["::/0"], description="All egress" }
+    ]
+  }
+
+  private = {
+    name        = "private-instance-sg"
+    description = "Allow SSH from VPN SG only"
+    rules = [
+      { type="ingress", protocol="tcp", from_port=22, to_port=22,
+        source_sg_keys=["vpn"], description="SSH from VPN SG" },
+
+      { type="egress", protocol="-1", from_port=0, to_port=0,
+        cidr_blocks=["0.0.0.0/0"], ipv6_cidr_blocks=["::/0"], description="All egress" }
+    ]
+  }
+}
+
 
 # sg_name_vpn     = "openvpn-ssh-sg"
 # sg_name_private = "private-instance-sg"

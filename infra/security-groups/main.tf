@@ -1,74 +1,120 @@
-# --- VPN + SSH SG ---
-resource "aws_security_group" "vpn_ssh" {
-  name        = var.sg_name_vpn
-  description = "Allow OpenVPN and SSH"
-  vpc_id      = var.vpc_id
-
-  # OpenVPN UDP
-  dynamic "ingress" {
-    for_each = var.vpn_udp_port == 0 ? [] : [1]
-    content {
-      from_port   = var.vpn_udp_port
-      to_port     = var.vpn_udp_port
-      protocol    = "udp"
-      cidr_blocks = var.vpn_ingress_cidrs
-      description = "OpenVPN UDP"
+############################
+# Normalize inputs
+############################
+locals {
+  # SG definitions (name/desc/tags)
+  sgs = {
+    for key, sg in var.security_groups :
+    key => {
+      name        = "${var.name_prefix}${coalesce(sg.name, key)}"
+      description = coalesce(sg.description, "Managed by Terraform")
+      vpc_id      = var.vpc_id
+      tags        = merge(var.tags, { Name = "${var.name_prefix}${coalesce(sg.name, key)}" }) 
     }
   }
 
-  # OpenVPN TCP
-  dynamic "ingress" {
-    for_each = var.vpn_tcp_port == 0 ? [] : [1]
-    content {
-      from_port   = var.vpn_tcp_port
-      to_port     = var.vpn_tcp_port
-      protocol    = "tcp"
-      cidr_blocks = var.vpn_ingress_cidrs
-      description = "OpenVPN TCP"
-    }
-  }
-
-  # SSH to VPN hosts
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = var.ssh_ingress_cidrs
-    description = "SSH"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "All egress"
-  }
-
-  tags = merge(var.tags, { Name = var.sg_name_vpn })
+  # Flat list of all rules with helpful fields attached
+  rules = flatten([
+    for sg_key, sg in var.security_groups : [
+      for idx, r in sg.rules : merge(r, {
+        sg_key            = sg_key
+        rule_key          = "${sg_key}-${idx}"
+        type              = r.type
+        protocol          = r.protocol
+        from_port         = r.from_port
+        to_port           = r.to_port
+        cidr_blocks       = coalesce(r.cidr_blocks, [])
+        ipv6_cidr_blocks  = coalesce(r.ipv6_cidr_blocks, [])
+        source_sgs        = coalesce(r.source_sg_keys, [])
+        description       = coalesce(r.description, "")
+      })
+    ]
+  ])
 }
 
-# --- Private-VM SG (SSH only from VPN SG) ---
-resource "aws_security_group" "private_vm" {
-  name        = var.sg_name_private
-  description = "Allow SSH from VPN SG"
-  vpc_id      = var.vpc_id
+############################
+# Create Security Groups
+############################
+resource "aws_security_group" "this" {
+  for_each    = local.sgs
+  name        = each.value.name
+  description = each.value.description
+  vpc_id      = each.value.vpc_id
+  tags        = each.value.tags
+}
 
-  ingress {
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    security_groups = [aws_security_group.vpn_ssh.id]
-    description     = "SSH from VPN SG"
+# Map key -> SG ID
+locals {
+  sg_id_by_key = { for k, sg in aws_security_group.this : k => sg.id }
+}
+
+############################
+# Rules: IPv4 CIDR
+############################
+resource "aws_security_group_rule" "cidr_v4" {
+  for_each = {
+    for r in local.rules :
+    "${r.rule_key}-v4" => r
+    if length(r.cidr_blocks) > 0
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "All egress"
+  type              = each.value.type
+  protocol          = each.value.protocol
+  from_port         = each.value.from_port
+  to_port           = each.value.to_port
+  cidr_blocks       = each.value.cidr_blocks
+  security_group_id = local.sg_id_by_key[each.value.sg_key]
+  description       = each.value.description
+}
+
+############################
+# Rules: IPv6 CIDR
+############################
+resource "aws_security_group_rule" "cidr_v6" {
+  for_each = {
+    for r in local.rules :
+    "${r.rule_key}-v6" => r
+    if length(r.ipv6_cidr_blocks) > 0
   }
 
-  tags = merge(var.tags, { Name = var.sg_name_private })
+  type                = each.value.type
+  protocol            = each.value.protocol
+  from_port           = each.value.from_port
+  to_port             = each.value.to_port
+  ipv6_cidr_blocks    = each.value.ipv6_cidr_blocks
+  security_group_id   = local.sg_id_by_key[each.value.sg_key]
+  description         = each.value.description
+}
+
+############################
+# Rules: SG -> SG
+############################
+# Precompute the for_each map (cannot use each.value inside the map expression)
+locals {
+  sg_to_sg_flat = flatten([
+    for base in local.rules : [
+      for src in base.source_sgs : merge(base, {
+        source_key = src
+        pair_key   = "${base.rule_key}-${src}"
+      })
+    ]
+  ])
+
+  sg_to_sg_map = {
+    for r in local.sg_to_sg_flat :
+    r.pair_key => r
+    if length(r.source_sgs) > 0
+  }
+}
+
+resource "aws_security_group_rule" "sg_to_sg" {
+  for_each = local.sg_to_sg_map
+
+  type                     = each.value.type
+  protocol                 = each.value.protocol
+  from_port                = each.value.from_port
+  to_port                  = each.value.to_port
+  source_security_group_id = local.sg_id_by_key[each.value.source_key]
+  security_group_id        = local.sg_id_by_key[each.value.sg_key]
+  description              = each.value.description
 }

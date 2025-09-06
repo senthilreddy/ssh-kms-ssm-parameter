@@ -10,6 +10,15 @@ module "vpc" {
   tags             = var.tags
 }
 
+module "securitygroup" {
+  source          = "./security-groups"
+  name_prefix     = var.name_prefix
+  vpc_id          = module.vpc.vpc_id       # or var.vpc_id if tfvars-driven
+  tags            = var.tags
+  security_groups = var.security_groups
+}
+
+
 # module "security_groups" {
 #   source           = "./security-groups"
 #   vpc_id           = module.vpc.vpc_id

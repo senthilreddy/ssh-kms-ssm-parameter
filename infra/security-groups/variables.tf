@@ -1,38 +1,41 @@
 variable "vpc_id" {
-  type = string
-}
-
-variable "sg_name_vpn" {
-  type    = string
-  default = "vpn-ssh-sg"
-}
-
-variable "sg_name_private" {
-  type    = string
-  default = "private-instance-sg"
-}
-
-variable "vpn_udp_port" {
-  type    = number
-  default = 1194
-}
-
-variable "vpn_tcp_port" {
-  type    = number
-  default = 0
-}
-
-variable "vpn_ingress_cidrs" {
-  type    = list(string)
-  default = ["0.0.0.0/0"]
-}
-
-variable "ssh_ingress_cidrs" {
-  type    = list(string)
-  default = ["0.0.0.0/0"]
+  type        = string
+  description = "VPC ID where SGs will be created"
 }
 
 variable "tags" {
-  type    = map(string)
-  default = {}
+  type        = map(string)
+  default     = {}
+  description = "Common tags merged into every SG"
 }
+
+variable "name_prefix" {
+  type        = string
+  default     = ""
+  description = "Optional prefix added to all SG names"
+}
+
+variable "security_groups" {
+  description = "Map of security groups and rules"
+  type = map(object({
+    name        = optional(string)
+    description = optional(string)
+    rules = list(object({
+      type              = string            # ingress | egress
+      protocol          = string            # tcp | udp | icmp | -1
+      from_port         = number
+      to_port           = number
+      description       = optional(string)
+      cidr_blocks       = optional(list(string))
+      ipv6_cidr_blocks  = optional(list(string))
+      source_sg_keys    = optional(list(string)) # references keys in this same map
+    }))
+  }))
+
+  validation {
+    condition     = alltrue([for _, sg in var.security_groups : length(sg.rules) > 0])
+    error_message = "Each security group must define at least one rule."
+  }
+}
+
+

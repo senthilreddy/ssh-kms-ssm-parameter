@@ -1,6 +1,16 @@
-output "vpc_id"                 { value = module.vpc.vpc_id }
-output "public_subnet_ids"      { value = module.vpc.public_subnet_ids }
-output "private_subnet_ids"     { value = module.vpc.private_subnet_ids }
+output "vpc_id" { 
+    value = module.vpc.vpc_id 
+    }
+output "public_subnet_ids" { 
+    value = module.vpc.public_subnet_ids 
+    }
+output "private_subnet_ids" { 
+    value = module.vpc.private_subnet_ids 
+    }
+output "sg_ids" {
+  value = module.securitygroup.security_group_ids
+}
+
 # output "vpn_ssh_security_group" { value = module.security_groups.vpn_ssh_sg_id }
 # output "private_instance_sg"    { value = module.security_groups.private_instance_sg }
 # output "openvpn_asg_name"       { value = module.openvpn_asg.asg_name }

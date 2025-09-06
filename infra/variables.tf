@@ -31,6 +31,36 @@ variable "tags" {
   default = {}
 }
 
+###################################
+# Security Groups inputs
+###################################
+
+variable "security_groups" {
+  type = map(object({
+    name        = optional(string)
+    description = optional(string)
+    rules = list(object({
+      type              = string
+      protocol          = string
+      from_port         = number
+      to_port           = number
+      description       = optional(string)
+      cidr_blocks       = optional(list(string))
+      ipv6_cidr_blocks  = optional(list(string))
+      source_sg_keys    = optional(list(string))
+    }))
+  }))
+}
+
+variable "name_prefix" {
+  type        = string
+  default     = ""
+  description = "Optional prefix added to all SG names"
+}
+
+
+# ###################################
+
 # # SG inputs
 # variable "sg_name_vpn" {
 #   type    = string
