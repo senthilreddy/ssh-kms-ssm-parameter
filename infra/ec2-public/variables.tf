@@ -107,3 +107,15 @@ variable "enable_capacity_rebalance" {
   type    = bool
   default = false
 }
+
+variable "instance_tags" {
+  description = "Extra tags for instances (merged with global tags)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "volume_tags" {
+  description = "Extra tags for volumes (merged with global tags)"
+  type        = map(string)
+  default     = {}
+}

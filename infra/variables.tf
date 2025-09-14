@@ -302,7 +302,11 @@ variable "enable_capacity_rebalance" {
   default = false
 }
 
-
+variable "openvpn_instance_tags" {
+  description = "Extra tags for OpenVPN EC2 instances"
+  type        = map(string)
+  default     = {}
+}
 
 
 ##############################             
@@ -319,6 +323,11 @@ variable "private_vm_min"            { type = number }
 variable "private_vm_max"            { type = number }
 variable "private_vm_desired"        { type = number }
 variable "private_vm_tg_key"         { type = string }
+variable "private_vm_instance_tags" {
+  description = "Extra tags for Private VM EC2 instances"
+  type        = map(string)
+  default     = {}
+}
 
 ##############################             
 # Route53 failover Inputs

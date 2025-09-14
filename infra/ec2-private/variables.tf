@@ -69,3 +69,19 @@ variable "target_group_arns" {
   type    = list(string)
   default = []
 }
+
+
+variable "instance_tags" {
+  description = "Extra tags for instances (merged with global tags)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "volume_tags" {
+  description = "Extra tags for volumes (merged with global tags)"
+  type        = map(string)
+  default     = {}
+}
+
+
+

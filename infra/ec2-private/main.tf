@@ -22,8 +22,20 @@ resource "aws_launch_template" "this" {
   }
 
   tag_specifications {
+    resource_type = "instance"
+    tags = merge(
+      var.tags,
+      var.instance_tags,
+      { Name = var.name }
+    )
+  }
+
+  tag_specifications {
     resource_type = "volume"
-    tags          = var.tags
+    tags = merge(
+      var.tags,
+      var.volume_tags
+    )
   }
 
   lifecycle { create_before_destroy = true }
@@ -49,7 +61,11 @@ resource "aws_autoscaling_group" "this" {
   target_group_arns    = var.target_group_arns
 
   dynamic "tag" {
-    for_each = merge(var.tags, { Name = var.name })
+    for_each = merge(
+      var.tags,
+      var.instance_tags,
+      { Name = var.name }
+    )
     content {
       key                 = tag.key
       value               = tag.value

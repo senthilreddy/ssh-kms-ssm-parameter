@@ -109,6 +109,7 @@ module "openvpn_asg" {
   ]
 
   tags = var.tags
+  instance_tags   = var.openvpn_instance_tags
 }
 
 #####################################
@@ -138,6 +139,7 @@ module "private_vm_asg" {
 
   health_check_grace_sec = 120
   tags = var.tags
+  instance_tags   = var.private_vm_instance_tags
 }
 
 ##############################             
