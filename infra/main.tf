@@ -86,6 +86,7 @@ module "openvpn_asg" {
   source = "./ec2-public"
 
   name           = var.openvpn_name
+  name_prefix     = var.name_prefix
   ami_id         = var.openvpn_ami
   instance_type  = var.openvpn_instance_type
   key_name       = var.key_name_admin
@@ -108,6 +109,10 @@ module "openvpn_asg" {
     module.nlb_public_secondary.target_group_arns[var.openvpn_ssh_tg_key],
   ]
 
+  enable_ssm                = var.enable_ssm
+  enable_cloudwatch_logging = var.enable_cloudwatch_logging
+  cloudwatch_log_group_names = var.cloudwatch_log_group_names
+
   tags = var.tags
   instance_tags   = var.openvpn_instance_tags
 }
@@ -120,6 +125,7 @@ module "private_vm_asg" {
   source = "./ec2-private"
 
   name          = var.private_vm_name
+  name_prefix     = var.name_prefix
   ami_id        = var.private_vm_ami
   instance_type = var.private_vm_instance_type
   key_name      = var.key_name_admin
@@ -136,6 +142,10 @@ module "private_vm_asg" {
   target_group_arns = [
     module.nlb_private.target_group_arns[var.private_vm_tg_key]
   ]
+
+  enable_ssm                = var.enable_ssm
+  enable_cloudwatch_logging = var.enable_cloudwatch_logging
+  cloudwatch_log_group_names = var.cloudwatch_log_group_names
 
   health_check_grace_sec = 120
   tags = var.tags

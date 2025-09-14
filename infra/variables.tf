@@ -60,6 +60,25 @@ variable "usernames" {
   type = list(string)
 }
 
+
+variable "enable_ssm" {
+  type        = bool
+  default     = true
+  description = "Enable SSM Agent for Session Manager access"
+}
+
+variable "enable_cloudwatch_logging" {
+  type        = bool
+  default     = true
+  description = "Enable CloudWatch Agent for logging"
+}
+
+variable "cloudwatch_log_group_names" {
+  type        = list(string)
+  default     = []
+  description = "Extra CloudWatch log group names for logs"
+}
+
 ###################################
 # VPC inputs
 ###################################
@@ -279,6 +298,7 @@ variable "openvpn_ssh_tg_key" {
 
 variable "openvpn_user_data" {
   type = string
+  default = ""
 }
 
 variable "vpn_allowed_cidrs" {
@@ -317,8 +337,6 @@ variable "openvpn_instance_tags" {
 variable "private_vm_name"           { type = string }
 variable "private_vm_ami"            { type = string }
 variable "private_vm_instance_type"  { type = string }
-variable "private_vm_user_data"      { type = string }
-
 variable "private_vm_min"            { type = number }
 variable "private_vm_max"            { type = number }
 variable "private_vm_desired"        { type = number }
@@ -327,6 +345,11 @@ variable "private_vm_instance_tags" {
   description = "Extra tags for Private VM EC2 instances"
   type        = map(string)
   default     = {}
+}
+
+variable "private_vm_user_data" {
+  type        = string
+  default     = ""
 }
 
 ##############################             

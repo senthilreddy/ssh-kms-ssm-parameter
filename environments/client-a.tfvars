@@ -181,7 +181,7 @@ nlb_private_listeners = [
 
 openvpn_name            = "openvpn"
 openvpn_ami             = "ami-0d0ad8bb301edb745"
-openvpn_instance_type   = "t3.micro"
+openvpn_instance_type   = "t2.medium"
 key_name_admin          = "client-a-admin"
 
 openvpn_min             = 1
@@ -197,18 +197,49 @@ vpn_allowed_cidrs       = ["0.0.0.0/0"]
 ssh_admin_cidrs         = []          # prefer SSM; add office /32 if needed
 
 # Optional knobs
-health_check_grace_sec  = 180
-enable_capacity_rebalance = false
+health_check_grace_sec  = 300
+enable_capacity_rebalance = false #Capacity Rebalancing is only relevant for Spot
 
-openvpn_user_data = <<-EOT
-#!/bin/bash
-set -e
-yum update -y
-yum install -y nc openvpn iptables iproute
-echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-sysctl -p
-# your full OpenVPN provisioning here...
-EOT
+# openvpn_user_data = <<-EOT
+# #!/bin/bash
+# #!/bin/bash
+# yum update -y
+
+# %{ if enable_ssm }
+# yum install -y amazon-ssm-agent
+# systemctl enable amazon-ssm-agent
+# systemctl start amazon-ssm-agent
+# %{ endif }
+
+# %{ if enable_cloudwatch_logging }
+# yum install -y amazon-cloudwatch-agent
+# systemctl enable amazon-cloudwatch-agent
+# systemctl start amazon-cloudwatch-agent
+
+# cat <<EOF >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+# {
+#   "logs": {
+#     "logs_collected": {
+#       "files": {
+#         "collect_list": [
+#           { "file_path": "/var/log/messages", "log_group_name": "${log_group_prefix}-syslog", "log_stream_name": "{instance_id}" },
+#           { "file_path": "/var/log/cloud-init.log", "log_group_name": "${log_group_prefix}-cloudinit", "log_stream_name": "{instance_id}" }
+#         ]
+#       }
+#     }
+#   }
+# }
+# EOF
+
+# /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+#   -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+# %{ endif }
+# EOT
+
+# Enable SSM + CloudWatch logging for debugging
+enable_ssm                = true
+enable_cloudwatch_logging = true
+cloudwatch_log_group_names = ["client-a-openvpn-logs"]
 
 ##############################             
 # Private VM ASG Inputs
@@ -224,17 +255,46 @@ private_vm_desired        = 1
 
 private_vm_tg_key         = "ssh"
 
-private_vm_user_data = <<-EOT
-#!/bin/bash
-set -euxo pipefail
+# private_vm_user_data = <<-EOT
+# #!/bin/bash
+# yum update -y
 
-if command -v dnf >/dev/null 2>&1; then pm="dnf"; else pm="yum"; fi
-$pm -y update
-$pm -y install amazon-ssm-agent || true
-systemctl enable --now amazon-ssm-agent || true
+# %{ if enable_ssm }
+# yum install -y amazon-ssm-agent
+# systemctl enable amazon-ssm-agent
+# systemctl start amazon-ssm-agent
+# %{ endif }
 
-# Your app bootstrap here...
-EOT
+# %{ if enable_cloudwatch_logging }
+# yum install -y amazon-cloudwatch-agent
+# systemctl enable amazon-cloudwatch-agent
+# systemctl start amazon-cloudwatch-agent
+
+# cat <<EOF >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+# {
+#   "logs": {
+#     "logs_collected": {
+#       "files": {
+#         "collect_list": [
+#           { "file_path": "/var/log/messages", "log_group_name": "${log_group_prefix}-syslog", "log_stream_name": "{instance_id}" },
+#           { "file_path": "/var/log/cloud-init.log", "log_group_name": "${log_group_prefix}-cloudinit", "log_stream_name": "{instance_id}" }
+#         ]
+#       }
+#     }
+#   }
+# }
+# EOF
+
+# /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+#   -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+# %{ endif }
+
+# EOF
+
+# /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+#   -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+# %{ endif ~}
+# EOT
 
 ##############################             
 # Route53 failover Inputs

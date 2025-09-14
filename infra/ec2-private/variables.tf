@@ -83,5 +83,57 @@ variable "volume_tags" {
   default     = {}
 }
 
+variable "enable_cloudwatch_logging" {
+  type        = bool
+  default     = true
+  description = "Enable CloudWatch Agent and forward system logs"
+}
+
+variable "enable_ssm" {
+  type        = bool
+  default     = true
+  description = "Enable SSM Agent for Session Manager access"
+}
+
+variable "cloudwatch_log_group_names" {
+  type        = list(string)
+  default     = []
+  description = "Extra CloudWatch log group names to create and use"
+}
+
+variable "detailed_monitoring" {
+  type    = bool
+  default = true
+}
+variable "iam_instance_profile_name" {
+  type    = string
+  default = null
+}
+variable "block_device_mappings" {
+  type = list(object({
+    device_name           = string
+    volume_size           = number
+    volume_type           = optional(string, "gp3")
+    encrypted             = optional(bool, true)
+    delete_on_termination = optional(bool, true)
+    iops                  = optional(number, null)
+    throughput            = optional(number, null)
+  }))
+  default = []
+}
+variable "disable_api_termination" {
+  type    = bool
+  default = false
+}
+variable "enable_capacity_rebalance" {
+  type    = bool
+  default = false
+}
+
+variable "name_prefix" {
+  type        = string
+  default     = ""
+}
+
 
 

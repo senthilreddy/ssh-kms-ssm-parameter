@@ -119,3 +119,39 @@ variable "volume_tags" {
   type        = map(string)
   default     = {}
 }
+
+
+variable "enable_cloudwatch_logging" {
+  type        = bool
+  default     = true
+  description = "Enable CloudWatch Agent and forward system logs"
+}
+
+variable "enable_ssm" {
+  type        = bool
+  default     = true
+  description = "Enable SSM Agent for Session Manager access"
+}
+
+variable "cloudwatch_log_group_names" {
+  type        = list(string)
+  default     = []
+  description = "Extra CloudWatch log group names to create and use"
+}
+
+variable "openvpn_user_data" {
+  type    = string
+  default  = ""
+}
+
+variable "private_vm_user_data" {
+  type    = string
+  default     = ""
+}
+
+variable "name_prefix" {
+  type        = string
+  default     = ""
+}
+
+
