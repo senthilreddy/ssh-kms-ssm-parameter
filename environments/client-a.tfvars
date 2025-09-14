@@ -21,11 +21,25 @@ rsa_bits             = 4096
 public_as_secure     = true
 ssm_tier             = "Standard"
 
-#### Tags
+################################################
+# Tags Inputs
+################################################
 
 tags = {
   Project     = "client-a"
   Environment = "dev"
+}
+
+# Extra tags only for public-facing (OpenVPN) instances
+openvpn_instance_tags = {
+  Role       = "openvpn-server"
+  Tier       = "bastion"
+}
+
+# Extra tags only for private VMs
+private_vm_instance_tags = {
+  Role       = "app-private"
+  Tier       = "backend"
 }
 
 
@@ -196,13 +210,6 @@ sysctl -p
 # your full OpenVPN provisioning here...
 EOT
 
-# Extra tags only for public-facing (OpenVPN) instances
-openvpn_instance_tags = {
-  Role       = "vpn-public"
-  Tier       = "bastion"
-}
-
-
 ##############################             
 # Private VM ASG Inputs
 ##############################
@@ -228,12 +235,6 @@ systemctl enable --now amazon-ssm-agent || true
 
 # Your app bootstrap here...
 EOT
-
-# Extra tags only for private VMs
-private_vm_instance_tags = {
-  Role       = "app-private"
-  Tier       = "backend"
-}
 
 ##############################             
 # Route53 failover Inputs
