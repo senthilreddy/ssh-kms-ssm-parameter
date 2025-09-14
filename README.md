@@ -76,3 +76,14 @@ terraform apply -target=module.private_vm_asg -var-file=../environments/client-a
 terraform apply -target=module.route53_failover_public_vpn -var-file=../environments/client-a.tfvars
 ```
 
+#### How to get admin ssh key from SSM Parameter store
+
+```
+### Private Key
+aws ssm get-parameter --name "/client-a/infra/ssh/admin/private" --with-decryption --query "Parameter.Value" --output text > ~/.ssh/client-a-admin.pem
+
+### Public Key
+aws ssm get-parameter --name "/client-a/infra/ssh/admin/public" --with-decryption --query "Parameter.Value" --output text > ~/.ssh/client-a-admin.pub
+```
+
+
